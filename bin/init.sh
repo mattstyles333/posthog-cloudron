@@ -109,29 +109,33 @@ done
 [[ "$(topic_partitions __posthog_probe)" == "1" ]] || { log "Redpanda never became ready for topic metadata"; exit 1; }
 rpk topic delete __posthog_probe --brokers 127.0.0.1:9092 >/dev/null 2>&1 || true
 
-while IFS= read -r topic; do
-    [[ -z "${topic}" ]] && continue
-    create_topic "${topic}" || exit 1
-done < "${APP_DIR}/conf/topics.txt"
+# Tracks created while the controller is replaying its log can be dropped moments later (the broker
+# still lists the name, but no broker hosts a partition). So create, let it settle, verify, and repair
+# in up to three rounds, then require a clean final check.
+for _round in 1 2 3; do
+    while IFS= read -r topic; do
+        [[ -z "${topic}" ]] && continue
+        create_topic "${topic}" || exit 1
+    done < "${APP_DIR}/conf/topics.txt"
 
-# Anything the broker reports as missing or partitionless is deleted and made again, once.
-broken=""
-while IFS= read -r topic; do
-    [[ -z "${topic}" ]] && continue
-    parts=$(topic_partitions "${topic}") || true
-    if [[ -z "${parts}" || "${parts}" == "0" ]]; then
-        broken+=" ${topic}"
-    fi
-done < "${APP_DIR}/conf/topics.txt"
-if [[ -n "${broken}" ]]; then
-    log "recreating topics the broker does not host:${broken}"
+    sleep 10
+
+    broken=""
+    while IFS= read -r topic; do
+        [[ -z "${topic}" ]] && continue
+        parts=$(topic_partitions "${topic}") || true
+        if [[ -z "${parts}" || "${parts}" == "0" ]]; then
+            broken+=" ${topic}"
+        fi
+    done < "${APP_DIR}/conf/topics.txt"
+
+    [[ -z "${broken}" ]] && break
+
+    log "round ${_round}: recreating topics the broker does not host:${broken}"
     for topic in ${broken}; do
         rpk topic delete "${topic}" --brokers 127.0.0.1:9092 >/dev/null 2>&1 || true
     done
-    for topic in ${broken}; do
-        create_topic "${topic}" || exit 1
-    done
-fi
+done
 
 still=""
 while IFS= read -r topic; do

@@ -38,12 +38,26 @@ def connect() -> psycopg.Connection:
     sys.exit(f"cannot connect to the addon database: {last}")
 
 
+# CREATE INDEX CONCURRENTLY (and anything else marked "no transaction") cannot run inside a
+# transaction block; the cyclotron migrations use it and mark it the same way sqlx and PostHog's own
+# persons migrator do.
+NO_TRANSACTION = re.compile(r"(?i)create\s+(unique\s+)?index\s+concurrently|--\s*no-transaction")
+
+
 def run_file(conn: psycopg.Connection, path: pathlib.Path, search_path: str | None) -> None:
+    sql = path.read_text()
+    if NO_TRANSACTION.search(sql):
+        with conn.cursor() as cur:
+            if search_path:
+                cur.execute(f'SET search_path TO "{search_path}", public')
+            cur.execute(sql)
+        print(f"  applied {path.name} (no transaction)", flush=True)
+        return
     with conn.transaction():
         with conn.cursor() as cur:
             if search_path:
                 cur.execute(f'SET LOCAL search_path TO "{search_path}", public')
-            cur.execute(path.read_text())
+            cur.execute(sql)
     print(f"  applied {path.name}", flush=True)
 
 

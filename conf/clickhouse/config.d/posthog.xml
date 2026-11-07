@@ -34,7 +34,7 @@
 
     <!-- It shares a 12 GiB container with the whole stack. 4 GiB is what the standalone hobby
          stack gives ClickHouse; at 2 GiB its own migrations died with MEMORY_LIMIT_EXCEEDED. -->
-    <max_server_memory_usage>4294967296</max_server_memory_usage>
+    <max_server_memory_usage>6442450944</max_server_memory_usage>
     <mark_cache_size>268435456</mark_cache_size>
     <uncompressed_cache_size>0</uncompressed_cache_size>
     <max_concurrent_queries>16</max_concurrent_queries>

@@ -53,7 +53,11 @@ RUN apt-get update && \
     rm -rf /var/cache/apt /var/lib/apt/lists
 
 # The plugin-server (node) code and its node_modules, from the image that runs them upstream.
+# nodejs/node_modules is a pnpm tree: its packages are symlinks into /code/node_modules/.pnpm, so the
+# store has to come along or every leaf module resolves to nothing ("Cannot find module
+# '@opentelemetry/api'").
 COPY --from=node /code/nodejs /code/nodejs
+COPY --from=node /code/node_modules /code/node_modules
 
 # At this pin every node service hardcodes HTTP_SERVER_PORT=6738 (nodejs/dist/common/config.js),
 # which works when each runs in its own container. Here they share one network namespace, so make

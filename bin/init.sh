@@ -83,15 +83,22 @@ for _ in $(seq 1 120); do
     rpk cluster health 2>/dev/null | grep -q "Healthy:  *true" && break
     sleep 2
 done
-existing=$(rpk topic list --brokers 127.0.0.1:9092 2>/dev/null || true)
+existing=$(rpk topic list --brokers 127.0.0.1:9092 2>/dev/null | awk 'NR>1 {print $1}')
 while IFS= read -r topic; do
     [[ -z "${topic}" ]] && continue
     if grep -qx "${topic}" <<<"${existing}"; then
         continue
     fi
-    rpk topic create "${topic}" --brokers 127.0.0.1:9092 -p 1 -r 1 >/dev/null 2>&1 || true
+    # An error here must not be swallowed: a topic created without partitions shows up in
+    # "rpk topic list" but every produce to it fails with UNKNOWN_TOPIC_OR_PARTITION.
+    if ! out=$(rpk topic create "${topic}" --brokers 127.0.0.1:9092 -p 1 -r 1 2>&1); then
+        log "creating ${topic} failed: ${out}"
+        [[ "${out}" == *ALREADY_EXISTS* ]] || exit 1
+    fi
 done < "${APP_DIR}/conf/topics.txt"
-log "$(rpk topic list --brokers 127.0.0.1:9092 2>/dev/null | wc -l) topics"
+broken=$(rpk topic list --brokers 127.0.0.1:9092 2>/dev/null | awk 'NR>1 && $2 == 0 {print $1}')
+[[ -z "${broken}" ]] || { log "topics with no partitions: ${broken}"; exit 1; }
+log "$(wc -l < "${APP_DIR}/conf/topics.txt") topics ready"
 
 log "object storage credentials and bucket"
 for _ in $(seq 1 60); do

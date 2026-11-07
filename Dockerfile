@@ -49,7 +49,8 @@ USER root
 # probe in bin/init.sh. postgresql-client is not installed: the Cloudron PostgreSQL addon is the
 # database, and every SQL statement goes through psycopg (already in the image).
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends supervisor openssl curl ca-certificates && \
+    apt-get install -y --no-install-recommends supervisor openssl curl ca-certificates \
+        librdkafka1 && \
     rm -rf /var/cache/apt /var/lib/apt/lists
 
 # The plugin-server (node) code and its node_modules, from the image that runs them upstream.

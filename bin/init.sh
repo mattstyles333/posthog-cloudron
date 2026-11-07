@@ -77,13 +77,12 @@ log "cyclotron schema"
 python3 "${APP_DIR}/bin/apply-sql.py" --schema cyclotron
 
 log "Kafka topics"
-if ! rpk topic list --brokers 127.0.0.1:9092 >/dev/null 2>&1; then
-    log "waiting for the Kafka API"
-    for _ in $(seq 1 60); do
-        rpk topic list --brokers 127.0.0.1:9092 >/dev/null 2>&1 && break
-        sleep 2
-    done
-fi
+# The broker accepts Kafka connections before its cluster is healthy. Creating topics in that window
+# leaves them without a leader ("UNKNOWN_TOPIC_OR_PARTITION" on every produce), so wait for health.
+for _ in $(seq 1 120); do
+    rpk cluster health 2>/dev/null | grep -q "Healthy:  *true" && break
+    sleep 2
+done
 existing=$(rpk topic list --brokers 127.0.0.1:9092 2>/dev/null || true)
 while IFS= read -r topic; do
     [[ -z "${topic}" ]] && continue

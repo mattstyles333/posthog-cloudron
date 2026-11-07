@@ -49,8 +49,7 @@ USER root
 # probe in bin/init.sh. postgresql-client is not installed: the Cloudron PostgreSQL addon is the
 # database, and every SQL statement goes through psycopg (already in the image).
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends supervisor openssl curl ca-certificates \
-        librdkafka1 && \
+    apt-get install -y --no-install-recommends supervisor openssl curl ca-certificates && \
     rm -rf /var/cache/apt /var/lib/apt/lists
 
 # The plugin-server (node) code and its node_modules, from the image that runs them upstream.
@@ -59,6 +58,10 @@ RUN apt-get update && \
 # '@opentelemetry/api'").
 COPY --from=node /code/nodejs /code/nodejs
 COPY --from=node /code/node_modules /code/node_modules
+# node-rdkafka loads librdkafka's C and C++ libraries by soname; take exactly the ones the node image
+# was built against (Debian's librdkafka1 package ships only the C library).
+COPY --from=node /usr/lib/x86_64-linux-gnu/librdkafka.so.1 /usr/lib/x86_64-linux-gnu/librdkafka.so.1
+COPY --from=node /usr/lib/x86_64-linux-gnu/librdkafka++.so.1 /usr/lib/x86_64-linux-gnu/librdkafka++.so.1
 # Workspace packages the node services symlink to (nodejs/node_modules/@posthog/hogvm ->
 # ../../../common/hogvm/typescript, and the two rust node bindings). Copied individually: the app
 # image has its own /code/common for Python, which must not be replaced.

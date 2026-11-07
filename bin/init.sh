@@ -84,12 +84,16 @@ for _ in $(seq 1 120); do
     sleep 2
 done
 # A topic can exist with zero partitions (created while the broker was not yet able to accept the
-# request). It shows up in "rpk topic list" but every produce to it fails with
-# UNKNOWN_TOPIC_OR_PARTITION, so repair those instead of trusting the list.
-topic_list() { rpk topic list --brokers 127.0.0.1:9092 2>/dev/null | awk 'NR>1 {print $1, $2}'; }
+# request). "rpk topic list" still shows it, but every produce fails with
+# UNKNOWN_TOPIC_OR_PARTITION, so ask describe instead and repair what it reports broken.
+topic_partitions() { rpk topic describe "$1" --brokers 127.0.0.1:9092 2>/dev/null | awk '$1 == "PARTITIONS" {print $2}'; }
 
 for _ in $(seq 1 3); do
-    broken=$(topic_list | awk '$2 == 0 {print $1}')
+    broken=""
+    while IFS= read -r topic; do
+        [[ -z "${topic}" ]] && continue
+        [[ "$(topic_partitions "${topic}")" == "0" ]] && broken+=" ${topic}"
+    done < "${APP_DIR}/conf/topics.txt"
     [[ -z "${broken}" ]] && break
     for topic in ${broken}; do
         log "repairing ${topic}: it has no partitions"
@@ -98,7 +102,7 @@ for _ in $(seq 1 3); do
     sleep 5
 done
 
-have=$(topic_list | awk '{print $1}')
+have=$(rpk topic list --brokers 127.0.0.1:9092 2>/dev/null | awk 'NR>1 {print $1}')
 while IFS= read -r topic; do
     [[ -z "${topic}" ]] && continue
     grep -qx "${topic}" <<<"${have}" && continue
@@ -109,8 +113,12 @@ while IFS= read -r topic; do
     fi
 done < "${APP_DIR}/conf/topics.txt"
 
-broken=$(topic_list | awk '$2 == 0 {print $1}')
-[[ -z "${broken}" ]] || { log "topics still without partitions: ${broken}"; exit 1; }
+broken=""
+while IFS= read -r topic; do
+    [[ -z "${topic}" ]] && continue
+    [[ "$(topic_partitions "${topic}")" == "0" ]] && broken+=" ${topic}"
+done < "${APP_DIR}/conf/topics.txt"
+[[ -z "${broken}" ]] || { log "topics still without partitions:${broken}"; exit 1; }
 log "$(wc -l < "${APP_DIR}/conf/topics.txt") topics ready"
 
 log "object storage credentials and bucket"

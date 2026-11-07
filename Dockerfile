@@ -58,6 +58,13 @@ RUN apt-get update && \
 # '@opentelemetry/api'").
 COPY --from=node /code/nodejs /code/nodejs
 COPY --from=node /code/node_modules /code/node_modules
+# Workspace packages the node services symlink to (nodejs/node_modules/@posthog/hogvm ->
+# ../../../common/hogvm/typescript, and the two rust node bindings). Copied individually: the app
+# image has its own /code/common for Python, which must not be replaced.
+COPY --from=node /code/common/hogvm /code/common/hogvm
+COPY --from=node /code/common/replay-headless /code/common/replay-headless
+COPY --from=node /code/rust/common/hogvm/node /code/rust/common/hogvm/node
+COPY --from=node /code/rust/replay-anonymizer-node /code/rust/replay-anonymizer-node
 
 # At this pin every node service hardcodes HTTP_SERVER_PORT=6738 (nodejs/dist/common/config.js),
 # which works when each runs in its own container. Here they share one network namespace, so make

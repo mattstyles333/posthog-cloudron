@@ -77,26 +77,46 @@ log "cyclotron schema"
 python3 "${APP_DIR}/bin/apply-sql.py" --schema cyclotron
 
 log "Kafka topics"
-# The broker accepts Kafka connections before its cluster is healthy. Creating topics in that window
-# leaves them without a leader ("UNKNOWN_TOPIC_OR_PARTITION" on every produce), so wait for health.
-for _ in $(seq 1 120); do
-    rpk cluster health 2>/dev/null | grep -q "Healthy:  *true" && break
+# The broker accepts Kafka connections before it can serve topic metadata: a topic created in that
+# window exists but has 0 partitions, and every produce to it then fails with
+# UNKNOWN_TOPIC_OR_PARTITION. So wait for a healthy cluster *and* prove it with a probe topic before
+# touching the real ones.
+topic_partitions() {
+    rpk topic describe "$1" --brokers 127.0.0.1:9092 2>/dev/null | awk '$1 == "PARTITIONS" {print $2}'
+}
+topic_broken() {
+    local parts
+    parts=$(topic_partitions "$1")
+    [[ -z "${parts}" || "${parts}" == "0" ]]
+}
+broker_ready() {
+    rpk cluster health 2>/dev/null | grep -q "Healthy:  *true" || return 1
+    rpk topic create __posthog_probe -p 1 -r 1 --brokers 127.0.0.1:9092 >/dev/null 2>&1 || true
+    [[ "$(topic_partitions __posthog_probe)" == "1" ]]
+}
+
+for _ in $(seq 1 150); do
+    if broker_ready; then
+        log "broker is ready"
+        break
+    fi
     sleep 2
 done
-# A topic can exist with zero partitions (created while the broker was not yet able to accept the
-# request). "rpk topic list" still shows it, but every produce fails with
-# UNKNOWN_TOPIC_OR_PARTITION, so ask describe instead and repair what it reports broken.
-topic_partitions() { rpk topic describe "$1" --brokers 127.0.0.1:9092 2>/dev/null | awk '$1 == "PARTITIONS" {print $2}'; }
+broker_ready || { log "Redpanda never became ready for topic metadata"; exit 1; }
 
+# Repair first: a topic left broken by an earlier boot is deleted and recreated with 1 partition and
+# replication factor 1 (there is one node).
 for _ in $(seq 1 3); do
     broken=""
     while IFS= read -r topic; do
         [[ -z "${topic}" ]] && continue
-        [[ "$(topic_partitions "${topic}")" == "0" ]] && broken+=" ${topic}"
+        if topic_broken "${topic}"; then
+            broken+=" ${topic}"
+        fi
     done < "${APP_DIR}/conf/topics.txt"
     [[ -z "${broken}" ]] && break
     for topic in ${broken}; do
-        log "repairing ${topic}: it has no partitions"
+        log "repairing ${topic}: no partitions"
         rpk topic delete "${topic}" --brokers 127.0.0.1:9092 >/dev/null 2>&1 || true
     done
     sleep 5
@@ -105,20 +125,27 @@ done
 have=$(rpk topic list --brokers 127.0.0.1:9092 2>/dev/null | awk 'NR>1 {print $1}')
 while IFS= read -r topic; do
     [[ -z "${topic}" ]] && continue
-    grep -qx "${topic}" <<<"${have}" && continue
-    # An error here must not be swallowed: a topic without partitions is worse than a failed boot.
-    if ! out=$(rpk topic create "${topic}" --brokers 127.0.0.1:9092 -p 1 -r 1 2>&1); then
+    if grep -qx "${topic}" <<<"${have}"; then
+        continue
+    fi
+    if ! out=$(rpk topic create "${topic}" -p 1 -r 1 --brokers 127.0.0.1:9092 2>&1); then
         log "creating ${topic} failed: ${out}"
         [[ "${out}" == *ALREADY_EXISTS* ]] || exit 1
     fi
 done < "${APP_DIR}/conf/topics.txt"
 
-broken=""
+still=""
 while IFS= read -r topic; do
     [[ -z "${topic}" ]] && continue
-    [[ "$(topic_partitions "${topic}")" == "0" ]] && broken+=" ${topic}"
+    if topic_broken "${topic}"; then
+        still+=" ${topic}"
+    fi
 done < "${APP_DIR}/conf/topics.txt"
-[[ -z "${broken}" ]] || { log "topics still without partitions:${broken}"; exit 1; }
+if [[ -n "${still}" ]]; then
+    log "topics still without partitions:${still}"
+    exit 1
+fi
+rpk topic delete __posthog_probe --brokers 127.0.0.1:9092 >/dev/null 2>&1 || true
 log "$(wc -l < "${APP_DIR}/conf/topics.txt") topics ready"
 
 log "object storage credentials and bucket"

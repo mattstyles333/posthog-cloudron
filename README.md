@@ -46,7 +46,7 @@ image with supervisord in front. That has three consequences worth knowing:
 | `personhog-replica` / `personhog-router` | 50051 / 50052 | required by the Node services at this pin |
 | `clickhouse` | 9000/8123/9181 | with built-in Keeper (no ZooKeeper) |
 | `redpanda` | 9092 | single node, 1 GiB |
-| `seaweedfs` + `seaweedfs-s3-replay` | 19000 / 8333 | object storage, S3 |
+| `seaweedfs` | 19000 | object storage (S3), data in `/app/data/objectstorage` |
 | `init` | — | one-shot: topics, buckets, migrations, fixups |
 
 **Not included** (upstream runs them as separate containers): Temporal and Elasticsearch (data
@@ -108,6 +108,25 @@ outside the rsync path, and a logical dump is written into the backup instead.
 - `restoreCommand` (`bin/restore.sh`) restores the newest dump **only into an empty ClickHouse
   store**, through a temporary `clickhouse-server` (never `clickhouse local`, which produces a
   store the server then refuses: Code 48).
+
+All three manifest fields this relies on are real on 10.x, and Cloudron documents exactly the
+semantics used here (https://docs.cloudron.io/packaging/manifest/):
+
+- **`persistentDirs`** — "directories that store persistent data which should not be included in
+  backups directly. Unlike `runtimeDirs`, these directories survive container updates. Unlike
+  `/app/data`, they are not backed up as part of the filesystem backup. Instead, use
+  `backupCommand` to create a portable logical dump of their contents into `/app/data`, and
+  `restoreCommand` to import that dump during restore." (Requires `minBoxVersion` ≥ 9.1.0; paths
+  must not overlap `/app/data`, `/tmp` or `/run`.)
+- **`backupCommand`** — "executed via `docker run` using the app's image in a temporary container
+  while the app is running. The temporary container **shares the app container's network
+  namespace** … It has access to `/app/data` and any `persistentDirs` bind mounts. The command
+  should produce a logical dump from the persistent data into `/app/data` so that it gets included
+  in the backup."
+- **`restoreCommand`** — "executed via `docker run` … **before the main app container starts**. The
+  app is not running at this point, so the command cannot connect to services on localhost inside
+  the app. … Typically this means starting the database temporarily in the restore container,
+  importing the dump, and shutting it down before the main app container is created."
 
 Consequence, same as Langfuse's: an **in-place restore** brings back the files and the addon
 database but keeps the live analytics data. Clone the app instead if you want a point-in-time copy

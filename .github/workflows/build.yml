@@ -1,0 +1,79 @@
+name: Build
+
+# Builds the package image and pushes it to GitHub Container Registry on main and on tags.
+#
+# There is no smoke test here on purpose: the stack needs ~10 GiB of RAM and tens of minutes of
+# first-boot migrations, which a hosted runner cannot do. Run scripts/smoke.sh locally before
+# merging instead (it is the acceptance test for every version).
+#
+# The image is ~11 GB (it carries the PostHog app, ClickHouse, Redpanda, SeaweedFS and Caddy), so
+# the first step reclaims the runner's preinstalled toolchains to make room.
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/posthog-cloudron
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Free disk space
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL \
+                      /usr/local/share/boost "$AGENT_TOOLSDIRECTORY"
+          sudo docker image prune -af || true
+          df -h /
+
+      - name: Read package version
+        id: meta
+        run: |
+          version=$(jq -r .version CloudronManifest.json)
+          upstream=$(jq -r .upstreamVersion CloudronManifest.json)
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "upstream=${upstream}" >> "$GITHUB_OUTPUT"
+          echo "Package ${version} of PostHog ${upstream}"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          # No layer cache: a single layer here is the 8 GB PostHog image, past what the GHA cache
+          # holds, and a cold build is dominated by that one pull either way.
+          tags: |
+            ${{ env.IMAGE }}:${{ steps.meta.outputs.version }}
+            ${{ env.IMAGE }}:${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.version=${{ steps.meta.outputs.version }}
+            org.opencontainers.image.title=PostHog (Cloudron)
+            org.opencontainers.image.description=PostHog packaged as a single Cloudron app
+
+      - name: Image size
+        run: docker image inspect "${IMAGE}:${{ steps.meta.outputs.version }}" --format '{{.Size}}' | awk '{printf "%.1f GB\n", $1/1e9}'

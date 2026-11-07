@@ -52,6 +52,12 @@ trap cleanup EXIT
 
 curl_json() { curl -sS -m 30 -H 'Content-Type: application/json' "$@"; }
 
+# Print where the container's one-shot init step has got to.
+init_progress() {
+    echo "    --- init progress ---"
+    docker logs "${NAME}" 2>&1 | grep -E '^==> \[init\]' | tail -4 | sed 's/^/    /'
+}
+
 # Wait for a URL to answer with a given status, printing progress now and then.
 wait_status() {
     local url=$1 want=$2 timeout=$3 what=$4 elapsed=0 code
@@ -61,10 +67,16 @@ wait_status() {
             echo "    ${what}: ${code} after ${elapsed}s"
             return 0
         fi
-        (( elapsed >= timeout )) && return 1
+        if (( elapsed >= timeout )); then
+            echo "    gave up on ${what} after ${elapsed}s (last ${code})"
+            return 1
+        fi
         sleep 5
         elapsed=$((elapsed + 5))
-        (( elapsed % 60 == 0 )) && echo "    waiting for ${what} (${elapsed}s, last ${code})"
+        if (( elapsed % 120 == 0 )); then
+            echo "    waiting for ${what} (${elapsed}s, last ${code})"
+            init_progress
+        fi
     done
 }
 
@@ -115,7 +127,7 @@ fi
 
 # --- 2. First sign-up ---------------------------------------------------------------------------
 log "2. waiting for migrations, then signing up the first user"
-if ! wait_status "${BASE}/_preflight/" 200 3600 "/_preflight/ (migrations)"; then
+if ! wait_status "${BASE}/_preflight/" 200 2700 "/_preflight/ (migrations)"; then
     fail "the app never finished starting"
 fi
 
@@ -184,7 +196,7 @@ docker start "${NAME}" >/dev/null
 if ! wait_status "${BASE}/_cloudron_health" 200 300 "health check after restart"; then
     fail "the health check did not come back after a restart"
 fi
-if ! wait_status "${BASE}/_preflight/" 200 3600 "/_preflight/ after restart"; then
+if ! wait_status "${BASE}/_preflight/" 200 1800 "/_preflight/ after restart"; then
     fail "the app did not come back after a restart"
 fi
 RESTART_SECS=$(( $(date +%s) - RESTART_START ))

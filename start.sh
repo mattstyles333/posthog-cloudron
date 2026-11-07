@@ -23,7 +23,7 @@ mkdir -p "${RUN_DIR}" /run/caddy /run/postgresql \
     /var/lib/posthog/clickhouse/data /var/lib/posthog/clickhouse/logs /var/lib/posthog/clickhouse/tmp \
     /var/lib/posthog/clickhouse/user_files /var/lib/posthog/clickhouse/format_schemas \
     /var/lib/posthog/clickhouse/access /var/lib/posthog/clickhouse/backups \
-    /var/lib/posthog/redpanda /var/lib/posthog/objectstorage /app/data/clickhouse-backup
+    /var/lib/posthog/redpanda /app/data/objectstorage /app/data/clickhouse-backup
 
 # --- Secrets: generated once, kept in the volume ------------------------------------------------
 if [[ ! -f "${DATA_DIR}/env.sh" ]]; then
@@ -123,7 +123,9 @@ export OBJECT_STORAGE_SECRET_ACCESS_KEY='object_storage_root_password'
 export OBJECT_STORAGE_FORCE_PATH_STYLE=true
 export OBJECT_STORAGE_BUCKET='posthog'
 
-export SESSION_RECORDING_V2_S3_ENDPOINT='http://127.0.0.1:8333'
+export SESSION_RECORDING_V2_S3_ENDPOINT='http://127.0.0.1:19000'
+export SESSION_RECORDING_V2_S3_BUCKET='posthog'
+export SESSION_RECORDING_V2_S3_PREFIX='session_recordings'
 export SESSION_RECORDING_V2_S3_ACCESS_KEY_ID='object_storage_root_user'
 export SESSION_RECORDING_V2_S3_SECRET_ACCESS_KEY='object_storage_root_password'
 

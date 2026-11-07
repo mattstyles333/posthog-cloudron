@@ -7,6 +7,10 @@
 #   node image    -> /code/nodejs (plugin-server services: cdp-api, ingestion, recording-api)
 #   rust images   -> /usr/local/bin/{capture,feature-flags,property-defs-rs,personhog-*}
 #   clickhouse    -> /usr/bin/clickhouse + /etc/clickhouse-server (with built-in Keeper)
+#     The stock image, not PostHog's fork: the fork's version string carries a "-posthog-<sha>"
+#     suffix and infi.clickhouse_orm (which runs the ClickHouse migrations) fails to parse it
+#     (ValueError: invalid literal for int(): '2-posthog-aca5bdabb92'). The standalone stack pins
+#     this same stock digest.
 #   redpanda      -> /opt/redpanda (a static binary)
 #   seaweedfs     -> /usr/bin/weed (S3 for replays and exported files)
 #   caddy         -> /usr/bin/caddy (the internal reverse proxy, replacing the hobby Caddy)
@@ -21,7 +25,7 @@ ARG FEATURE_FLAGS_IMAGE=ghcr.io/posthog/posthog/feature-flags@sha256:178282c5788
 ARG PROPERTY_DEFS_IMAGE=ghcr.io/posthog/posthog/property-defs-rs@sha256:68938284e9c11a7d34a1a48dee37a1454fa49ea2eed9edb47206db272946cf24
 ARG PERSONHOG_REPLICA_IMAGE=ghcr.io/posthog/posthog/personhog-replica@sha256:bed197fc4cf17291ea36ff5657299a30c6b4314ff7e8aa4bd7df042343793311
 ARG PERSONHOG_ROUTER_IMAGE=ghcr.io/posthog/posthog/personhog-router@sha256:ca112d27cfae4c0bb010f421ee6c6d70abb79acd7c4d4e6eee45708b681e4c6c
-ARG CLICKHOUSE_IMAGE=ghcr.io/posthog/clickhouse-posthog@sha256:34f131fcbaa38d5e2ff86f40408aeed99b07716f6a0f3a01f81fdbfe486791e0
+ARG CLICKHOUSE_IMAGE=clickhouse/clickhouse-server@sha256:95f7cbf466dba734947775eb74808a13a3558e4398666ea6b1d992af85b9740d
 ARG REDPANDA_IMAGE=redpandadata/redpanda@sha256:8f7e9e4c1422baaa1a5e2a6c6c668cfe05442cb3cb476542c7dff61725e6fe31
 ARG SEAWEEDFS_IMAGE=chrislusf/seaweedfs@sha256:d47c7ee99fcb951351d7194915f4e3a5ea604a8e8871183d713907dec4fb9bf5
 ARG CADDY_IMAGE=caddy@sha256:13b7fbadd017b042956fddbceedeeea12bb1e560534f9b3df281269dbcc61813
@@ -89,10 +93,10 @@ COPY caddy/Caddyfile /app/code/conf/Caddyfile
 COPY bin/ /app/code/bin/
 COPY conf/ /app/code/conf/
 RUN chmod +x /app/code/start.sh /app/code/bin/*.sh /app/code/bin/*.py && \
-    cp /app/code/conf/clickhouse/config.d/posthog.xml /etc/clickhouse-server/config.d/posthog.xml
+    cp /app/code/conf/clickhouse/config.d/*.xml /etc/clickhouse-server/config.d/
 
 RUN mkdir -p /app/data/clickhouse-backup \
-        /var/lib/posthog/clickhouse /var/lib/posthog/redpanda /var/lib/posthog/objectstorage \
+        /var/lib/posthog/clickhouse /var/lib/posthog/redpanda \
         /run/posthog /run/caddy /run/postgresql
 
 EXPOSE 8000

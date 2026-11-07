@@ -109,6 +109,14 @@ for _ in $(seq 1 60); do
 done
 log "object storage ready"
 
+# The ClickHouse database itself: PostHog creates it with DDL ON CLUSTER, which is asynchronous, and
+# then immediately connects to it (migrate_clickhouse.py). Creating it up front removes that race —
+# without this the first run fails with "Database posthog does not exist".
+log "ClickHouse database and system tables"
+/usr/bin/clickhouse client --host 127.0.0.1 --query "CREATE DATABASE IF NOT EXISTS ${CLICKHOUSE_DATABASE}"
+# system.crash_log is missing from both ClickHouse images we can pin; a migration view reads it.
+/usr/bin/clickhouse client --host 127.0.0.1 --multiquery < "${APP_DIR}/conf/clickhouse/system-logs.sql"
+
 # --- 3. PostHog migrations -------------------------------------------------------------------------
 # ./bin/migrate is upstream's own orchestrator: Postgres (with retries), persons (hobby layout),
 # ClickHouse (migrate_clickhouse + sync_replicated_schema) and the async migrations.

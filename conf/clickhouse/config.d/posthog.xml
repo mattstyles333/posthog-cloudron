@@ -26,31 +26,16 @@
         </local_directory>
     </user_directories>
 
-    <!-- It shares a 12 GiB container with the whole stack; it must never grow into that. -->
-    <max_server_memory_usage>2147483648</max_server_memory_usage>
-    <mark_cache_size>536870912</mark_cache_size>
+    <!-- It shares a 12 GiB container with the whole stack. 4 GiB is what the standalone hobby
+         stack gives ClickHouse; at 2 GiB its own migrations died with MEMORY_LIMIT_EXCEEDED. -->
+    <max_server_memory_usage>4294967296</max_server_memory_usage>
+    <mark_cache_size>268435456</mark_cache_size>
     <uncompressed_cache_size>0</uncompressed_cache_size>
     <max_concurrent_queries>16</max_concurrent_queries>
-    <max_server_memory_usage_to_ram_ratio>0.3</max_server_memory_usage_to_ram_ratio>
+    <max_server_memory_usage_to_ram_ratio>0.5</max_server_memory_usage_to_ram_ratio>
 
-    <!-- PostHog creates ReplicatedMergeTree tables against the cluster named "posthog" and uses
-         {shard}/{replica} macros. One node: Keeper (below) plus a single replica. -->
-    <remote_servers>
-        <posthog>
-            <shard>
-                <internal_replication>true</internal_replication>
-                <replica>
-                    <host>127.0.0.1</host>
-                    <port>9000</port>
-                </replica>
-            </shard>
-        </posthog>
-    </remote_servers>
-
-    <macros>
-        <shard>01</shard>
-        <replica>posthog-01</replica>
-    </macros>
+    <!-- Cluster definitions live in clusters.xml (upstream's docker/clickhouse/config.d/default.xml,
+         one node). -->
 
     <distributed_ddl>
         <path>/clickhouse/task_queue/ddl</path>

@@ -86,7 +86,9 @@ topic_partitions() {
 }
 topic_broken() {
     local parts
-    parts=$(topic_partitions "$1")
+    # "|| true": rpk exits non-zero for a broken topic, and with pipefail that status would leak out
+    # of the assignment and make the caller's `if` see "not broken" without ever testing the value.
+    parts=$(topic_partitions "$1") || true
     [[ -z "${parts}" || "${parts}" == "0" ]]
 }
 broker_ready() {

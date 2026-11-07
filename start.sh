@@ -104,16 +104,11 @@ export CLICKHOUSE_HOST='127.0.0.1'
 export CLICKHOUSE_DATABASE='posthog'
 export CLICKHOUSE_SECURE=false
 export CLICKHOUSE_VERIFY=false
-# The per-workload ClickHouse users PostHog expects (its dictionary DDL names dict_reader
-# explicitly). ClickHouse itself does not create them, so bin/init.sh does, with these passwords.
-export CLICKHOUSE_APP_USER='app'
-export CLICKHOUSE_APP_PASSWORD='${CLICKHOUSE_APP_PASSWORD}'
-export CLICKHOUSE_API_USER='api'
-export CLICKHOUSE_API_PASSWORD='${CLICKHOUSE_API_PASSWORD}'
-export CLICKHOUSE_BILLING_USER='billing'
-export CLICKHOUSE_BILLING_PASSWORD='${CLICKHOUSE_BILLING_PASSWORD}'
-export CLICKHOUSE_DICT_READER_USER='dict_reader'
-export CLICKHOUSE_DICT_READER_PASSWORD='${CLICKHOUSE_DICT_READER_PASSWORD}'
+# The dedicated per-workload ClickHouse users (app/api/billing/dict_reader) are deliberately not
+# set. ClickHouse ships only `default`, nothing in this package creates extra accounts, and
+# PostHog's own helpers fall back to the default user when CLICKHOUSE_<USER>_* is unset
+# (posthog/clickhouse/client/connection.py, dictionaries.py). Setting them without a matching
+# ClickHouse user fails every query and every dictionary reload with "Code: 516".
 export CLICKHOUSE_LOGS_CLUSTER_HOST='127.0.0.1'
 export CLICKHOUSE_LOGS_CLUSTER_SECURE=false
 

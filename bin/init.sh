@@ -116,24 +116,6 @@ log "ClickHouse database and system tables"
 /usr/bin/clickhouse client --host 127.0.0.1 --query "CREATE DATABASE IF NOT EXISTS ${CLICKHOUSE_DATABASE}"
 # system.crash_log is missing from both ClickHouse images we can pin; a migration view reads it.
 /usr/bin/clickhouse client --host 127.0.0.1 --multiquery < "${APP_DIR}/conf/clickhouse/system-logs.sql"
-# PostHog's ClickHouse dictionaries name dict_reader (and its client connects as app/api/billing),
-# but nothing creates those users: ClickHouse ships only `default`. Without them every dictionary
-# query fails with "Code: 516. Authentication failed".
-log "ClickHouse users"
-for _u in APP API BILLING DICT_READER; do
-    _user_var="CLICKHOUSE_${_u}_USER"
-    _pass_var="CLICKHOUSE_${_u}_PASSWORD"
-    _user="${!_user_var:-}"
-    _pass="${!_pass_var:-}"
-    [[ -n "${_user}" && -n "${_pass}" ]] || continue
-    /usr/bin/clickhouse client --host 127.0.0.1 --query \
-        "CREATE USER IF NOT EXISTS \`${_user}\` IDENTIFIED WITH sha256_password BY '${_pass}'" || exit 1
-    # The password must match what the app connects with on every boot (a fresh env.sh means new ones).
-    /usr/bin/clickhouse client --host 127.0.0.1 --query \
-        "ALTER USER \`${_user}\` IDENTIFIED WITH sha256_password BY '${_pass}'" || exit 1
-    /usr/bin/clickhouse client --host 127.0.0.1 --query "GRANT SELECT, INSERT, ALTER, CREATE, DROP, TRUNCATE, OPTIMIZE, SYSTEM ON *.* TO \`${_user}\`" || exit 1
-done
-
 # The executables that take RowBinary (funnels, Hog) read their schemas from format_schema_path;
 # upstream's ClickHouse entrypoint copies the repo's IDL there for the same reason.
 cp -r /code/posthog/idl/. /var/lib/posthog/clickhouse/format_schemas/ 2>/dev/null || true

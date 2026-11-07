@@ -5,6 +5,8 @@
 # holds un-consumed events).
 redpanda:
   data_directory: ##DATA_DIR##
+  # Pinned: the broker keeps its identity (and the cluster UUID stored next to its data) across
+  # container restarts and updates. A changed node id makes existing topics unhosted.
   node_id: 0
   seed_servers: []
   empty_seed_starts_cluster: true

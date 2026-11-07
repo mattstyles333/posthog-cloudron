@@ -77,77 +77,71 @@ log "cyclotron schema"
 python3 "${APP_DIR}/bin/apply-sql.py" --schema cyclotron
 
 log "Kafka topics"
-# The broker accepts Kafka connections before it can serve topic metadata: a topic created in that
-# window exists but has 0 partitions, and every produce to it then fails with
-# UNKNOWN_TOPIC_OR_PARTITION. So wait for a healthy cluster *and* prove it with a probe topic before
-# touching the real ones.
+# The broker accepts connections before it can serve topic metadata, and "rpk topic list" can report
+# topics the broker does not actually host (they then fail every produce with
+# UNKNOWN_TOPIC_OR_PARTITION). So: wait until a probe topic really has a partition, create every
+# topic unconditionally (ALREADY_EXISTS is not an error), then verify each one and repair the ones
+# that are broken.
 topic_partitions() {
     rpk topic describe "$1" --brokers 127.0.0.1:9092 2>/dev/null | awk '$1 == "PARTITIONS" {print $2}'
 }
-topic_broken() {
-    local parts
-    # "|| true": rpk exits non-zero for a broken topic, and with pipefail that status would leak out
-    # of the assignment and make the caller's `if` see "not broken" without ever testing the value.
-    parts=$(topic_partitions "$1") || true
-    [[ -z "${parts}" || "${parts}" == "0" ]]
-}
-broker_ready() {
-    rpk cluster health 2>/dev/null | grep -q "Healthy:  *true" || return 1
-    rpk topic create __posthog_probe -p 1 -r 1 --brokers 127.0.0.1:9092 >/dev/null 2>&1 || true
-    [[ "$(topic_partitions __posthog_probe)" == "1" ]]
+
+create_topic() {
+    local out
+    if ! out=$(rpk topic create "$1" -p 1 -r 1 --brokers 127.0.0.1:9092 2>&1); then
+        if [[ "${out}" != *ALREADY_EXISTS* ]]; then
+            log "creating $1 failed: ${out}"
+            return 1
+        fi
+    fi
 }
 
 for _ in $(seq 1 150); do
-    if broker_ready; then
-        log "broker is ready"
-        break
+    if rpk cluster health 2>/dev/null | grep -q "Healthy:  *true"; then
+        rpk topic create __posthog_probe -p 1 -r 1 --brokers 127.0.0.1:9092 >/dev/null 2>&1 || true
+        if [[ "$(topic_partitions __posthog_probe)" == "1" ]]; then
+            log "broker is ready"
+            break
+        fi
     fi
     sleep 2
 done
-broker_ready || { log "Redpanda never became ready for topic metadata"; exit 1; }
+[[ "$(topic_partitions __posthog_probe)" == "1" ]] || { log "Redpanda never became ready for topic metadata"; exit 1; }
+rpk topic delete __posthog_probe --brokers 127.0.0.1:9092 >/dev/null 2>&1 || true
 
-# Repair first: a topic left broken by an earlier boot is deleted and recreated with 1 partition and
-# replication factor 1 (there is one node).
-for _ in $(seq 1 3); do
-    broken=""
-    while IFS= read -r topic; do
-        [[ -z "${topic}" ]] && continue
-        if topic_broken "${topic}"; then
-            broken+=" ${topic}"
-        fi
-    done < "${APP_DIR}/conf/topics.txt"
-    [[ -z "${broken}" ]] && break
-    for topic in ${broken}; do
-        log "repairing ${topic}: no partitions"
-        rpk topic delete "${topic}" --brokers 127.0.0.1:9092 >/dev/null 2>&1 || true
-    done
-    sleep 5
-done
-
-have=$(rpk topic list --brokers 127.0.0.1:9092 2>/dev/null | awk 'NR>1 {print $1}')
 while IFS= read -r topic; do
     [[ -z "${topic}" ]] && continue
-    if grep -qx "${topic}" <<<"${have}"; then
-        continue
-    fi
-    if ! out=$(rpk topic create "${topic}" -p 1 -r 1 --brokers 127.0.0.1:9092 2>&1); then
-        log "creating ${topic} failed: ${out}"
-        [[ "${out}" == *ALREADY_EXISTS* ]] || exit 1
+    create_topic "${topic}" || exit 1
+done < "${APP_DIR}/conf/topics.txt"
+
+# Anything the broker reports as missing or partitionless is deleted and made again, once.
+broken=""
+while IFS= read -r topic; do
+    [[ -z "${topic}" ]] && continue
+    parts=$(topic_partitions "${topic}") || true
+    if [[ -z "${parts}" || "${parts}" == "0" ]]; then
+        broken+=" ${topic}"
     fi
 done < "${APP_DIR}/conf/topics.txt"
+if [[ -n "${broken}" ]]; then
+    log "recreating topics the broker does not host:${broken}"
+    for topic in ${broken}; do
+        rpk topic delete "${topic}" --brokers 127.0.0.1:9092 >/dev/null 2>&1 || true
+    done
+    for topic in ${broken}; do
+        create_topic "${topic}" || exit 1
+    done
+fi
 
 still=""
 while IFS= read -r topic; do
     [[ -z "${topic}" ]] && continue
-    if topic_broken "${topic}"; then
+    parts=$(topic_partitions "${topic}") || true
+    if [[ -z "${parts}" || "${parts}" == "0" ]]; then
         still+=" ${topic}"
     fi
 done < "${APP_DIR}/conf/topics.txt"
-if [[ -n "${still}" ]]; then
-    log "topics still without partitions:${still}"
-    exit 1
-fi
-rpk topic delete __posthog_probe --brokers 127.0.0.1:9092 >/dev/null 2>&1 || true
+[[ -z "${still}" ]] || { log "topics still not hosted:${still}"; exit 1; }
 log "$(wc -l < "${APP_DIR}/conf/topics.txt") topics ready"
 
 log "object storage credentials and bucket"

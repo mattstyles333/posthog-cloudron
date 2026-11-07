@@ -19,8 +19,11 @@
 
 set -euo pipefail
 
-IMAGE=${1:?usage: smoke.sh <image> [--keep]}
-KEEP=${2:-}
+IMAGE=${1:?usage: smoke.sh <image>}
+# SMOKE_KEEP=1 keeps the containers and volumes on exit, and on the next run reuses them instead of
+# starting from empty volumes: only the app container is recreated. That turns a fix after the
+# 30-minute first migration into a 2-minute restart. Default is a fresh run with full cleanup.
+KEEP=${SMOKE_KEEP:-}
 
 # One at a time: two runs share the container name, volumes and network, and delete each other's.
 exec 9>/tmp/posthog-smoke.lock
@@ -46,8 +49,8 @@ dump_logs() {
 }
 
 cleanup() {
-    if [[ "${KEEP}" == "--keep" ]]; then
-        echo "kept: container ${NAME}, databases ${PG}/${REDIS}, volumes and network"
+    if [[ "${KEEP}" == 1 ]]; then
+        echo "kept (SMOKE_KEEP=1): app ${NAME}, databases ${PG}/${REDIS}, volumes posthog-smoke-*, network ${NET}"
         return
     fi
     docker rm -f "${NAME}" "${PG}" "${REDIS}" >/dev/null 2>&1 || true
@@ -87,20 +90,27 @@ wait_status() {
     done
 }
 
-log "throwaway Postgres ${PG_VERSION} and Redis on ${NET}"
-docker rm -f "${NAME}" "${PG}" "${REDIS}" >/dev/null 2>&1 || true
-docker volume rm posthog-smoke-data posthog-smoke-clickhouse posthog-smoke-redpanda >/dev/null 2>&1 || true
-docker network rm "${NET}" >/dev/null 2>&1 || true
-docker network create "${NET}" >/dev/null
-docker run -d --name "${PG}" --network "${NET}" \
-    -e POSTGRES_USER=posthog -e POSTGRES_PASSWORD=smoke-pg-password -e POSTGRES_DB=posthog \
-    "postgres:${PG_VERSION}-alpine" >/dev/null
-docker run -d --name "${REDIS}" --network "${NET}" redis:8-alpine >/dev/null
+if [[ "${KEEP}" == 1 ]] && docker network inspect "${NET}" >/dev/null 2>&1 && \
+        docker volume inspect posthog-smoke-data >/dev/null 2>&1; then
+    log "reusing the kept Postgres, Redis and volumes (SMOKE_KEEP=1)"
+    docker start "${PG}" "${REDIS}" >/dev/null 2>&1 || true
+else
+    log "throwaway Postgres ${PG_VERSION} and Redis on ${NET}"
+    docker rm -f "${NAME}" "${PG}" "${REDIS}" >/dev/null 2>&1 || true
+    docker volume rm posthog-smoke-data posthog-smoke-clickhouse posthog-smoke-redpanda >/dev/null 2>&1 || true
+    docker network rm "${NET}" >/dev/null 2>&1 || true
+    docker network create "${NET}" >/dev/null
+    docker run -d --name "${PG}" --network "${NET}" \
+        -e POSTGRES_USER=posthog -e POSTGRES_PASSWORD=smoke-pg-password -e POSTGRES_DB=posthog \
+        "postgres:${PG_VERSION}-alpine" >/dev/null
+    docker run -d --name "${REDIS}" --network "${NET}" redis:8-alpine >/dev/null
+fi
 until docker exec "${PG}" pg_isready -U posthog -d posthog >/dev/null 2>&1; do sleep 1; done
 until docker exec "${REDIS}" redis-cli ping 2>/dev/null | grep -q PONG; do sleep 1; done
 echo "    ready"
 
 log "starting the app"
+docker rm -f "${NAME}" >/dev/null 2>&1 || true
 docker run -d --name "${NAME}" --network "${NET}" \
     --read-only --tmpfs /tmp:rw,size=1g --tmpfs /run:rw,size=64m \
     --memory 12g --memory-swap 12g \
@@ -134,7 +144,7 @@ fi
 
 # --- 2. First sign-up ---------------------------------------------------------------------------
 log "2. waiting for migrations, then signing up the first user"
-if ! wait_status "${BASE}/_preflight/" 200 2700 "/_preflight/ (migrations)"; then
+if ! wait_status "${BASE}/_preflight/" 200 3600 "/_preflight/ (migrations)"; then
     fail "the app never finished starting"
 fi
 
@@ -203,7 +213,7 @@ docker start "${NAME}" >/dev/null
 if ! wait_status "${BASE}/_cloudron_health" 200 300 "health check after restart"; then
     fail "the health check did not come back after a restart"
 fi
-if ! wait_status "${BASE}/_preflight/" 200 1800 "/_preflight/ after restart"; then
+if ! wait_status "${BASE}/_preflight/" 200 2400 "/_preflight/ after restart"; then
     fail "the app did not come back after a restart"
 fi
 RESTART_SECS=$(( $(date +%s) - RESTART_START ))

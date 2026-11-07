@@ -104,6 +104,8 @@ export CLICKHOUSE_HOST='127.0.0.1'
 export CLICKHOUSE_DATABASE='posthog'
 export CLICKHOUSE_SECURE=false
 export CLICKHOUSE_VERIFY=false
+# The per-workload ClickHouse users PostHog expects (its dictionary DDL names dict_reader
+# explicitly). ClickHouse itself does not create them, so bin/init.sh does, with these passwords.
 export CLICKHOUSE_APP_USER='app'
 export CLICKHOUSE_APP_PASSWORD='${CLICKHOUSE_APP_PASSWORD}'
 export CLICKHOUSE_API_USER='api'

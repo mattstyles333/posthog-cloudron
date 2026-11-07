@@ -21,6 +21,13 @@ set -euo pipefail
 
 IMAGE=${1:?usage: smoke.sh <image> [--keep]}
 KEEP=${2:-}
+
+# One at a time: two runs share the container name, volumes and network, and delete each other's.
+exec 9>/tmp/posthog-smoke.lock
+if ! flock -n 9; then
+    echo "another scripts/smoke.sh is already running (lock /tmp/posthog-smoke.lock)" >&2
+    exit 1
+fi
 NAME=posthog-smoke
 NET=posthog-smoke-net
 PG=posthog-smoke-pg

@@ -87,13 +87,22 @@ COPY --from=seaweedfs /usr/bin/weed /usr/bin/weed
 
 COPY --from=caddy /usr/bin/caddy /usr/bin/caddy
 
+
 # Package files.
 COPY start.sh supervisord.conf env.sh.template /app/code/
 COPY caddy/Caddyfile /app/code/conf/Caddyfile
 COPY bin/ /app/code/bin/
 COPY conf/ /app/code/conf/
+# PostHog's ClickHouse executable UDFs, copied out of the app image into /app/code so the server
+# can run them from the read-only root filesystem, with the /tmp-noexec workaround applied
+# (conf/patch-run-udf.py explains why).
+RUN cp -a /code/posthog/user_scripts /app/code/user_scripts && \
+    python3 /app/code/conf/patch-run-udf.py /app/code/user_scripts
+
 RUN chmod +x /app/code/start.sh /app/code/bin/*.sh /app/code/bin/*.py && \
-    cp /app/code/conf/clickhouse/config.d/*.xml /etc/clickhouse-server/config.d/
+    cp /app/code/conf/clickhouse/config.d/*.xml /etc/clickhouse-server/config.d/ && \
+    cp /app/code/conf/clickhouse/user_defined_function.xml /etc/clickhouse-server/user_defined_function.xml && \
+    cp /app/code/conf/clickhouse/users.d/*.xml /etc/clickhouse-server/users.d/
 
 RUN mkdir -p /app/data/clickhouse-backup \
         /var/lib/posthog/clickhouse /var/lib/posthog/redpanda \

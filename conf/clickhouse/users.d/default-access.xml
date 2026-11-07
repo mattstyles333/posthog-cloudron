@@ -1,0 +1,11 @@
+<clickhouse>
+    <!-- The default (only) local user creates the per-workload users in bin/init.sh, which needs
+         access management. The ClickHouse images we pin also ship it in users.xml; this makes the
+         requirement explicit and survives an image change. -->
+    <users>
+        <default>
+            <access_management>1</access_management>
+            <named_collection_control>1</named_collection_control>
+        </default>
+    </users>
+</clickhouse>

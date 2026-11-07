@@ -13,6 +13,12 @@
     <listen_host>127.0.0.1</listen_host>
 
     <path>/var/lib/posthog/clickhouse/data/</path>
+    <!-- PostHog's executable UDFs (JSONCleanPostHogEvent and friends) live in the app image; their
+         definitions are user_defined_function.xml, loaded from /etc/clickhouse-server by the
+         default user_defined_executable_functions_config glob. A migration's materialized view
+         calls one of them, so without these ClickHouse migrations fail with
+         "Code: 46. Function with name JSONCleanPostHogEvent does not exist". -->
+    <user_scripts_path>/app/code/user_scripts/</user_scripts_path>
     <tmp_path>/var/lib/posthog/clickhouse/tmp/</tmp_path>
     <user_files_path>/var/lib/posthog/clickhouse/user_files/</user_files_path>
     <format_schema_path>/var/lib/posthog/clickhouse/format_schemas/</format_schema_path>

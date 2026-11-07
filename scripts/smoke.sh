@@ -149,20 +149,38 @@ if ! wait_status "${BASE}/_preflight/" 200 3600 "/_preflight/ (migrations)"; the
 fi
 
 EMAIL="smoke@example.com"
-PASSWORD="smoke-password-${RANDOM}"
+# Fixed, so a SMOKE_KEEP=1 rerun can log in to the account a previous run created.
+PASSWORD="smoke-password-1"
 SIGNUP=$(curl_json -o "${WORKDIR}/signup.json" -w '%{http_code}' -X POST "${BASE}/api/signup" \
     -d "{\"first_name\":\"Smoke\",\"email\":\"${EMAIL}\",\"password\":\"${PASSWORD}\",\"organization_name\":\"Smoke Org\"}")
-[[ "${SIGNUP}" == 200 || "${SIGNUP}" == 201 ]] || { cat "${WORKDIR}/signup.json"; fail "signup returned ${SIGNUP}"; }
-echo "    signup: ${SIGNUP}"
-jq -e '.uuid' "${WORKDIR}/signup.json" >/dev/null || { cat "${WORKDIR}/signup.json"; fail "no user uuid in the signup response"; }
+if [[ "${SIGNUP}" != 200 && "${SIGNUP}" != 201 ]]; then
+    # A reused instance (SMOKE_KEEP=1) already has the owner account: this instance cannot create a
+    # second organisation, so signing up again is refused. Continue and log in below.
+    if [[ "${KEEP}" == 1 ]]; then
+        echo "    signup: ${SIGNUP} (already signed up on this instance; continuing)"
+    else
+        cat "${WORKDIR}/signup.json"
+        fail "signup returned ${SIGNUP}"
+    fi
+else
+    echo "    signup: ${SIGNUP}"
+    jq -e '.uuid' "${WORKDIR}/signup.json" >/dev/null || { cat "${WORKDIR}/signup.json"; fail "no user uuid in the signup response"; }
+fi
 
 LOGIN=$(curl_json -c "${WORKDIR}/cookies" -o "${WORKDIR}/login.json" -w '%{http_code}' -X POST "${BASE}/api/login" \
     -d "{\"email\":\"${EMAIL}\",\"password\":\"${PASSWORD}\"}")
 [[ "${LOGIN}" == 200 ]] || { cat "${WORKDIR}/login.json"; fail "login returned ${LOGIN}"; }
 echo "    login: ${LOGIN}"
 
+# The list endpoint has been a bare array and a paginated object depending on version.
 curl_json -b "${WORKDIR}/cookies" "${BASE}/api/projects/" -o "${WORKDIR}/projects.json"
-TOKEN=$(jq -r '.[0].api_token // .results[0].api_token // empty' "${WORKDIR}/projects.json")
+TOKEN=$(jq -r 'if type == "array" then (.[0].api_token // empty)
+                elif has("results") then (.results[0].api_token // empty)
+                else (.api_token // empty) end' "${WORKDIR}/projects.json" 2>/dev/null || true)
+if [[ -z "${TOKEN}" ]]; then
+    curl_json -b "${WORKDIR}/cookies" "${BASE}/api/projects/@current/" -o "${WORKDIR}/project.json"
+    TOKEN=$(jq -r '.api_token // empty' "${WORKDIR}/project.json" 2>/dev/null || true)
+fi
 [[ -n "${TOKEN}" ]] || { cat "${WORKDIR}/projects.json"; fail "no project API key"; }
 echo "    project API key: ${TOKEN:0:8}…"
 

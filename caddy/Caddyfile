@@ -1,0 +1,63 @@
+# The single port Cloudron publishes (httpPort 8000 in the manifest). Same routing as PostHog's
+# own Caddy in the hobby stack, with every upstream container replaced by 127.0.0.1:<port> and the
+# services we do not ship (capture-logs, capture-ai, livestream, hypercache) removed.
+#
+# /_cloudron_health answers 200 from this process alone, so Cloudron's health check passes while
+# the first-boot migrations are still running.
+
+{
+	admin off
+	auto_https off
+	log {
+		output stdout
+		format console
+	}
+}
+
+:8000 {
+	handle /_cloudron_health {
+		respond "ok" 200
+	}
+
+	# Session replay ingestion (/s, /s/...)
+	@replay-capture path /s /s/*
+	handle @replay-capture {
+		reverse_proxy 127.0.0.1:3101
+	}
+
+	# Event ingestion (/e, /i/v0/*, /i/v1/analytics/events, /batch, /capture)
+	@capture path /e /e/* /i/v0 /i/v0/* /i/v1/analytics/events /i/v1/analytics/events/* /batch /batch/* /capture /capture/*
+	handle @capture {
+		reverse_proxy 127.0.0.1:3100
+	}
+
+	# Feature flags and local evaluation
+	@flags path /flags /flags/* /api/feature_flag/local_evaluation /api/feature_flag/local_evaluation/*
+	handle @flags {
+		reverse_proxy 127.0.0.1:3001
+	}
+
+	# Surveys and remote config: upstream serves these from hypercache-server, which this package
+	# does not ship, so they fall through to the Django app.
+	@surveys path /surveys /surveys/* /api/surveys /api/surveys/* /array/*
+	handle @surveys {
+		reverse_proxy 127.0.0.1:8010
+	}
+
+	# Hog function webhooks and the message assets they serve
+	@webhooks path /public/webhooks /public/webhooks/* /public/m/ /public/m/*
+	handle @webhooks {
+		reverse_proxy 127.0.0.1:6738
+	}
+
+	# Object storage over the public origin (presigned replay and export URLs)
+	@objectstorage path /posthog /posthog/*
+	handle @objectstorage {
+		reverse_proxy 127.0.0.1:19000
+	}
+
+	# Everything else: the Django app
+	handle {
+		reverse_proxy 127.0.0.1:8010
+	}
+}

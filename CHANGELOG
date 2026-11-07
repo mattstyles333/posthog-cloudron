@@ -1,0 +1,8 @@
+[0.1.0]
+* First build: one container running web, worker, the node plugin-server services, capture,
+  replay-capture, feature-flags, property-defs-rs, personhog-replica/router, ClickHouse (with
+  built-in Keeper), Redpanda, SeaweedFS and Caddy
+* PostgreSQL, Redis and mail from Cloudron addons
+* Cloudron health check answers during the first-boot migrations
+* ClickHouse data in a persistentDir, with a dump written into the backup (Cloudron backup crash
+  workaround)

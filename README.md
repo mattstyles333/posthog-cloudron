@@ -1,0 +1,186 @@
+# posthog-cloudron
+
+PostHog as a **single Cloudron app**: one container running the web app, the worker, the ingestion
+pipeline, ClickHouse, Kafka, object storage and a reverse proxy, with PostgreSQL, Redis and mail
+from Cloudron's addons.
+
+Built for Cloudron 10.x. Unofficial, community-maintained, MIT (see `LICENSE`; PostHog itself is
+MIT Expat except for its `ee/` directory).
+
+- Upstream: [PostHog/posthog](https://github.com/PostHog/posthog), pinned to commit
+  `233686435f9b9fd6b32c78303bd9480644d48aff` (2026-10-18) — the commit the author's standalone
+  self-hosted stack runs.
+- Every image is pinned **by digest**, never by `:master`; the digests are in the `Dockerfile`
+  arguments and come from that stack's `compose.pins.yml`.
+
+## Why one container
+
+Cloudron runs one container per app, so PostHog's 30-plus-container hobby compose becomes one
+image with supervisord in front. That has three consequences worth knowing:
+
+1. **Ports.** Upstream gives every service its own container, so several bind the same port
+   (`capture` and `replay-capture` both use 3000; every Node service hardcodes 6738). Here each one
+   gets a port of its own behind the proxy, and `nodejs/dist/common/config.js` is patched at build
+   time so the Node services' HTTP port can be set per process (the build fails if that line ever
+   changes upstream).
+2. **Memory.** Everything shares one 12 GiB limit, so each component is capped individually:
+   ClickHouse at 2 GiB, Redpanda at 1 GiB, the Node services at 384 MB of heap, granian at two
+   workers, Celery at two. Measured idle after ingest: see *Checks* below.
+3. **Backups.** See [Backups](#backups-and-restores).
+
+## What runs
+
+| Process | Port (inside) | Notes |
+|---|---|---|
+| `caddy` | **8000** (the Cloudron httpPort) | the only published port; reproduces PostHog's hobby routing |
+| `web` | 8010 | Django + granian, `GRANIAN_WORKERS=2` |
+| `worker` | — | Celery with the scheduler, `WEB_CONCURRENCY=2` |
+| `plugins` | 6738 | plugin-server in `cdp-api` mode (Hog function templates) |
+| `ingestion-general` | 6741 | plugin-server `ingestion-v2-combined` |
+| `ingestion-sessionreplay` | 6742 | plugin-server `recordings-blob-ingestion-v2` |
+| `recording-api` | 6740 | plugin-server `recording-api` |
+| `capture` | 3100 | Rust event capture (`/e`, `/i/v0/*`, `/batch`) |
+| `replay-capture` | 3101 | Rust replay capture (`/s`) |
+| `feature-flags` | 3001 | Rust flags, `/flags`, local evaluation |
+| `property-defs-rs` | — | Kafka → Postgres |
+| `personhog-replica` / `personhog-router` | 50051 / 50052 | required by the Node services at this pin |
+| `clickhouse` | 9000/8123/9181 | with built-in Keeper (no ZooKeeper) |
+| `redpanda` | 9092 | single node, 1 GiB |
+| `seaweedfs` + `seaweedfs-s3-replay` | 19000 / 8333 | object storage, S3 |
+| `init` | — | one-shot: topics, buckets, migrations, fixups |
+
+**Not included** (upstream runs them as separate containers): Temporal and Elasticsearch (data
+warehouse syncs, batch exports, some background workflows), `livestream`, `browserless`
+(heatmap screenshots), `cymbal` (error-tracking symbolication), the logs/traces/AI capture
+services, CDP destination delivery (cyclotron workers), and the hobby stack's second SeaweedFS.
+
+## Cloudron addons
+
+| Addon | Why | Notes |
+|---|---|---|
+| `postgresql` | the app database | PostHog declares `postgresql >= 14.0.0` (`posthog/settings/service_requirements.py`); the addon's PostgreSQL 14.x satisfies it. Migrations 0308 and 0463 create the `intarray` and `ltree` extensions, both trusted since PostgreSQL 13, so the database owner can create them without superuser rights. **Threading note:** the addon gives one database, so the CDP API's cyclotron tables live in a `cyclotron` schema of it (schema created by `bin/init.sh`, connection carries `?options=-csearch_path=cyclotron`). |
+| `redis` | caches, flags, replay | `noPassword: true` because several Node services take a host/port pair, not a URL; `maxmemoryPolicy: allkeys-lru`. Cloudron ships Redis 8; PostHog's declared range is `>=7,<8`, which is a *declaration* — the only runtime check at this pin is for ClickHouse, so Redis 8 is used. |
+| `sendmail` | invitations, alerts | mapped to Django's `EMAIL_*` settings on every boot |
+
+## First boot and the health check
+
+`start.sh` generates `/app/data/env.sh` once (PostHog secret, encryption salts, ClickHouse
+passwords), rebuilds `/run/posthog/env.sh` from the Cloudron environment on **every** start, and
+hands over to supervisord. `bin/init.sh` then:
+
+1. waits for the addons, ClickHouse, Redpanda and SeaweedFS,
+2. creates the `cyclotron` schema, the Kafka topics (`conf/topics.txt`, upstream's list) and the S3
+   credentials and bucket,
+3. runs upstream's own `./bin/migrate` (Postgres with retries, persons in the hobby layout,
+   `migrate_clickhouse`, `sync_replicated_schema`, async migrations),
+4. applies the persons fix-up index and the vendored cyclotron migrations,
+5. syncs the Hog function templates, and only then touches `/run/posthog/initialized`, which is
+   what the other services wait for (`bin/svc.sh`).
+
+The manifest's `healthCheckPath` is `/_cloudron_health`, answered by Caddy itself. It returns 200
+seconds after the container starts, long before migrations finish, so Cloudron does not mark the
+install failed during the first (long) migration run — and it keeps answering during a restart.
+
+Both the fix-up index and the cyclotron schema are carried over from the standalone stack
+(`~/code/posthog-selfhost`), where the missing unique index meant *no event ever reached
+ClickHouse* because every person upsert failed.
+
+## Backups and restores
+
+ClickHouse's data directory is a Cloudron **`persistentDirs`** entry, not part of `/app/data`.
+Cloudron's rsync backup walks the app's data tree; a live ClickHouse deletes its temporary merge
+directories while that walk is in progress, the syncer then throws on a vanished directory and
+**the whole server's backup run aborts**, silently leaving every later app on the previous night's
+snapshot (Cloudron forum topics
+[15652](https://forum.cloudron.io/topic/15652/langfuse-on-cloudron-community-package) and
+[15663](https://forum.cloudron.io/topic/15663/backup-task-crashes-when-a-clickhouse-app-deletes-a-temp-merge-dir-mid-snapshot)).
+This is the workaround the Langfuse community package uses, adopted here: the churny store lives
+outside the rsync path, and a logical dump is written into the backup instead.
+
+- `backupCommand` (`bin/backup.sh`) runs in a temporary container that shares the app's network
+  namespace, and runs `BACKUP DATABASE posthog TO Disk('backups', 'posthog-<stamp>.zip')` through
+  the live server. Dumps land in `/app/data/clickhouse-backup/` and the newest two are kept.
+- PostgreSQL is the Cloudron addon's database: Cloudron backs it up itself.
+- Replay blobs and exports live in `/app/data/objectstorage` and are backed up by Cloudron's normal
+  file backup.
+- Kafka's data (`/var/lib/posthog/redpanda`) is a `persistentDirs` entry and is **not** backed up:
+  it only ever holds un-consumed events.
+- `restoreCommand` (`bin/restore.sh`) restores the newest dump **only into an empty ClickHouse
+  store**, through a temporary `clickhouse-server` (never `clickhouse local`, which produces a
+  store the server then refuses: Code 48).
+
+Consequence, same as Langfuse's: an **in-place restore** brings back the files and the addon
+database but keeps the live analytics data. Clone the app instead if you want a point-in-time copy
+of everything.
+
+## Upgrading
+
+Upgrades are a digest bump plus a fresh image:
+
+1. pick the new upstream commit and the image digests its `docker-compose.hobby.yml` resolves to
+   (the standalone stack generates them with `pin_images.py`),
+2. update the `ARG` digests at the top of the `Dockerfile` and `upstreamVersion` /
+   `version` in `CloudronManifest.json`,
+3. add a `CHANGELOG` entry,
+4. run `scripts/smoke.sh` against the new image (below),
+5. re-check the two upstream assumptions that make this package work:
+   `grep -c 'process.env.HTTP_SERVER_PORT'` in the build output (the Node port patch) and that
+   `conf/topics.txt` still matches `docker/kafka/topics.txt` at the new commit.
+
+ClickHouse data survives the upgrade as long as the ClickHouse image's data format stays
+compatible; take a backup first (Cloudron does that automatically on update).
+
+## Building and testing
+
+```sh
+docker build -t posthog-cloudron:dev .
+scripts/smoke.sh posthog-cloudron:dev
+```
+
+`scripts/smoke.sh` runs the image the way Cloudron does — `--read-only`, tmpfs on `/tmp` and
+`/run`, volumes for `/app/data` and the persistentDirs, `--memory 12g`, and `CLOUDRON_*` variables
+pointing at throwaway PostgreSQL (14, the addon's major version) and Redis containers on a private
+network — and asserts:
+
+1. `/_cloudron_health` answers 200 while the first-boot migrations are still running,
+2. the first sign-up through `/api/signup` succeeds,
+3. an event posted to `/e/` shows up in ClickHouse within two minutes,
+4. `/flags` answers for the project key,
+5. the stack idles under 10 GiB,
+6. a restart on the same volumes comes back healthy, with the user and the event still there and
+   the migrations a no-op.
+
+Everything it creates is removed afterwards; the image is kept.
+
+## Checks (0.1.0)
+
+Filled in from the run recorded in the commit that introduced this version — see `git log` and the
+smoke output in it.
+
+## Limits worth knowing
+
+- **No Cloudron SSO.** PostHog's OIDC/SAML is an enterprise feature; the first sign-up at the app
+  URL is the owner, and a self-hosted instance cannot create a second organisation.
+- **No Temporal/Elasticsearch**: data-warehouse syncs, batch exports and a few background
+  workflows are unavailable; the UI hides what it can.
+- **No CDP delivery**: Hog function templates load and the Data pipelines UI works, but enabled
+  destinations do not send (no cyclotron workers).
+- **Surveys** fall through to the Django app rather than hypercache-server; basic survey display
+  works, remote config (`/array/*`) is served by Django.
+- **One node.** ClickHouse runs a single replica; there is no scaling story beyond a bigger app.
+- **Upgrades are pinned.** Nothing tracks upstream automatically.
+
+## Layout
+
+```
+CloudronManifest.json   package manifest (addons, health check, memory, persistentDirs, backup/restore)
+Dockerfile              multi-stage: the pinned app image + node, rust, clickhouse, redpanda, weed, caddy
+start.sh                Cloudron entrypoint: secrets once, environment every boot, then supervisord
+supervisord.conf        every process, in dependency order
+caddy/Caddyfile         the single published port and PostHog's routing
+conf/                   ClickHouse config.d, Redpanda config, Kafka topics, fixup SQL, cyclotron SQL,
+                        the per-service environment
+bin/                    init.sh (migrations), svc.sh (wait for init, then exec), apply-sql.py,
+                        backup.sh / restore.sh (Cloudron backupCommand / restoreCommand)
+scripts/smoke.sh        the end-to-end check described above
+```

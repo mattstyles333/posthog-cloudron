@@ -1,0 +1,44 @@
+# Minimal single-node Redpanda (Kafka API) for this container.
+#
+# One core, 1 GiB, no fsync batching changes: events in flight are not worth more than the
+# container's other processes. Data lives in a Cloudron persistentDir (never backed up: Kafka only
+# holds un-consumed events).
+redpanda:
+  data_directory: ##DATA_DIR##
+  node_id: 0
+  seed_servers: []
+  empty_seed_starts_cluster: true
+  developer_mode: true
+  rpc_server:
+    address: 127.0.0.1
+    port: 33145
+  advertised_rpc_api:
+    address: 127.0.0.1
+    port: 33145
+  kafka_api:
+    - address: 127.0.0.1
+      port: 9092
+  advertised_kafka_api:
+    - address: 127.0.0.1
+      port: 9092
+  admin:
+    - address: 127.0.0.1
+      port: 9644
+  crash_loop_limit: 10
+
+rpk:
+  enable_usage_stats: false
+  overprovisioned: true
+  tune_network: false
+  tune_disk_scheduler: false
+  tune_disk_nomerges: false
+  tune_disk_write_cache: false
+  tune_disk_irq: false
+  tune_cpu: false
+  tune_aio_events: false
+  tune_clocksource: false
+  tune_swappiness: false
+  tune_ballast_file: false
+
+pandaproxy: {}
+schema_registry: {}

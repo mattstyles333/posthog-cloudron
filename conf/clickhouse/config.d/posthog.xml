@@ -1,0 +1,98 @@
+<clickhouse>
+    <!-- Overrides for PostHog's ClickHouse image, loaded after config.xml (config.d). -->
+    <logger>
+        <level>information</level>
+        <console>1</console>
+        <log>/var/lib/posthog/clickhouse/logs/server.log</log>
+        <errorlog>/var/lib/posthog/clickhouse/logs/error.log</errorlog>
+        <size>50M</size>
+        <count>3</count>
+    </logger>
+
+    <!-- Only this container talks to it. -->
+    <listen_host>127.0.0.1</listen_host>
+
+    <path>/var/lib/posthog/clickhouse/data/</path>
+    <tmp_path>/var/lib/posthog/clickhouse/tmp/</tmp_path>
+    <user_files_path>/var/lib/posthog/clickhouse/user_files/</user_files_path>
+    <format_schema_path>/var/lib/posthog/clickhouse/format_schemas/</format_schema_path>
+    <access_control_path>/var/lib/posthog/clickhouse/access/</access_control_path>
+    <user_directories>
+        <users_xml>
+            <path>/etc/clickhouse-server/users.xml</path>
+        </users_xml>
+        <local_directory>
+            <path>/var/lib/posthog/clickhouse/access/</path>
+        </local_directory>
+    </user_directories>
+
+    <!-- It shares a 12 GiB container with the whole stack; it must never grow into that. -->
+    <max_server_memory_usage>2147483648</max_server_memory_usage>
+    <mark_cache_size>536870912</mark_cache_size>
+    <uncompressed_cache_size>0</uncompressed_cache_size>
+    <max_concurrent_queries>16</max_concurrent_queries>
+    <max_server_memory_usage_to_ram_ratio>0.3</max_server_memory_usage_to_ram_ratio>
+
+    <!-- PostHog creates ReplicatedMergeTree tables against the cluster named "posthog" and uses
+         {shard}/{replica} macros. One node: Keeper (below) plus a single replica. -->
+    <remote_servers>
+        <posthog>
+            <shard>
+                <internal_replication>true</internal_replication>
+                <replica>
+                    <host>127.0.0.1</host>
+                    <port>9000</port>
+                </replica>
+            </shard>
+        </posthog>
+    </remote_servers>
+
+    <macros>
+        <shard>01</shard>
+        <replica>posthog-01</replica>
+    </macros>
+
+    <distributed_ddl>
+        <path>/clickhouse/task_queue/ddl</path>
+    </distributed_ddl>
+
+    <!-- ClickHouse's built-in Keeper replaces ZooKeeper (the hobby stack's zookeeper container). -->
+    <keeper_server>
+        <tcp_port>9181</tcp_port>
+        <server_id>1</server_id>
+        <log_storage_path>/var/lib/posthog/clickhouse/keeper/log</log_storage_path>
+        <snapshot_storage_path>/var/lib/posthog/clickhouse/keeper/snapshots</snapshot_storage_path>
+        <coordination_settings>
+            <operation_timeout_ms>10000</operation_timeout_ms>
+            <session_timeout_ms>30000</session_timeout_ms>
+            <raft_logs_level>warning</raft_logs_level>
+        </coordination_settings>
+        <raft_configuration>
+            <server>
+                <id>1</id>
+                <hostname>127.0.0.1</hostname>
+                <port>9444</port>
+            </server>
+        </raft_configuration>
+    </keeper_server>
+
+    <zookeeper>
+        <node>
+            <host>127.0.0.1</host>
+            <port>9181</port>
+        </node>
+    </zookeeper>
+
+    <!-- Nightly Cloudron backup target: BACKUP DATABASE ... TO Disk('backups', ...) lands in
+         /app/data, which Cloudron copies. The live data directory is outside /app/data because
+         ClickHouse's temporary merge directories make Cloudron's rsync backup abort
+         (see README "Backups"). -->
+    <storage_configuration>
+        <disks>
+            <backups>
+                <type>local</type>
+                <path>/app/data/clickhouse-backup/</path>
+            </backups>
+        </disks>
+    </storage_configuration>
+</clickhouse>

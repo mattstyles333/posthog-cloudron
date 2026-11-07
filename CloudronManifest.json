@@ -1,0 +1,55 @@
+{
+  "id": "io.posthog.cloudronapp",
+  "title": "PostHog",
+  "tagline": "Product analytics, session replay and feature flags in one app",
+  "description": "file://DESCRIPTION.md",
+  "changelog": "file://CHANGELOG",
+  "postInstallMessage": "file://POSTINSTALL.md",
+  "version": "0.1.0",
+  "upstreamVersion": "233686435f9b",
+  "manifestVersion": 2,
+  "minBoxVersion": "9.1.0",
+  "healthCheckPath": "/_cloudron_health",
+  "httpPort": 8000,
+  "memoryLimit": 12884901888,
+  "persistentDirs": [
+    "/var/lib/posthog/clickhouse",
+    "/var/lib/posthog/redpanda"
+  ],
+  "backupCommand": "/app/code/bin/backup.sh",
+  "restoreCommand": "/app/code/bin/restore.sh",
+  "addons": {
+    "postgresql": {},
+    "redis": {
+      "noPassword": true,
+      "maxmemoryPolicy": "allkeys-lru"
+    },
+    "sendmail": {
+      "supportsDisplayName": true
+    }
+  },
+  "checklist": {
+    "create-admin": {
+      "message": "Open the app and sign up: the first account becomes the instance owner. Self-hosted PostHog cannot create a second organisation, so use this account for everything."
+    },
+    "storefront-snippet": {
+      "message": "In **Project settings → Web snippet**, copy the project API key into your site. Send browser events to this app's URL and set `ui_host` to the same URL."
+    }
+  },
+  "icon": "file://logo.png",
+  "iconUrl": "https://raw.githubusercontent.com/mattstyles333/posthog-cloudron/main/logo.png",
+  "website": "https://posthog.com",
+  "documentationUrl": "https://posthog.com/docs/self-host",
+  "packagerName": "mattstyles333",
+  "packagerUrl": "https://github.com/mattstyles333/posthog-cloudron",
+  "tags": [
+    "analytics",
+    "product",
+    "session-replay",
+    "feature-flags",
+    "posthog"
+  ],
+  "mediaLinks": [
+    "https://raw.githubusercontent.com/mattstyles333/posthog-cloudron/main/logo.png"
+  ]
+}

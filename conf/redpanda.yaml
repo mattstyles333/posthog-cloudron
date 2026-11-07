@@ -11,6 +11,10 @@ redpanda:
   seed_servers: []
   empty_seed_starts_cluster: true
   developer_mode: true
+  # Let a produce or a consumer create a topic that is missing. The topics init.sh creates can be
+  # dropped by the controller when it is still replaying at boot; with this, the first produce simply
+  # makes the topic again instead of failing until the next restart.
+  auto_create_topics_enabled: true
   rpc_server:
     address: 127.0.0.1
     port: 33145

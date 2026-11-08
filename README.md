@@ -140,7 +140,7 @@ outside the rsync path, and a logical dump is written into the backup instead.
   `posthog` database if it exists, `RESTORE DATABASE posthog FROM Disk('backups', '<dump>')`, check
   that the database has tables, remove the marker — every step logged to the app log and to
   `/app/data/.last-restore.log`. On failure the marker is kept and the boot stops, so the services
-  never start over an empty store.
+  never start on an empty database.
 - The same marker covers the real disaster case: a restored or cloned app with an **empty
   persistentDir** starts a fresh ClickHouse, finds the marker, and loads the dump before the
   migrations run.
@@ -164,9 +164,14 @@ semantics used here (https://docs.cloudron.io/packaging/manifest/):
   the app. … Typically this means starting the database temporarily in the restore container,
   importing the dump, and shutting it down before the main app container is created."
 
-Consequence, same as Langfuse's: an **in-place restore** brings back the files and the addon
-database but keeps the live analytics data. Clone the app instead if you want a point-in-time copy
-of everything.
+Consequence: **a restore rolls the analytics back to the backup's point in time**, like the Postgres
+data. The `posthog` database is dropped and loaded from the dump on every restore — in place, on a
+clone, or on a fresh box whose data directory is empty. That is the behaviour to expect from a
+backup.
+
+**Tip for other packagers:** Cloudron runs `backupCommand` and `restoreCommand` as
+`/bin/sh -c '<script>'`, so the shebang is ignored and bash syntax fails silently under dash. Both
+scripts here re-exec themselves under bash (`[ -n "${BASH_VERSION:-}" ] || exec /bin/bash "$0" "$@"`).
 
 ## Upgrading
 
@@ -241,9 +246,9 @@ migrations took 1695 s in the smoke run; the app's health check answers 200 from
 
 **Backups.** ClickHouse's data directory is a `persistentDirs` entry, outside `/app/data`, because its
 merge churn aborts Cloudron's rsync backup for every app after it. `backupCommand` writes a
-`BACKUP DATABASE` dump into `/app/data/clickhouse-backup/` at backup time and `restoreCommand` restores
-it only into an empty store — so an in-place restore keeps the live analytics data; clone the app for a
-point-in-time copy. Replay blobs live in `/app/data/objectstorage` and are backed up as files.
+`BACKUP DATABASE` dump into `/app/data/clickhouse-backup/` at backup time, and a restore drops the
+`posthog` database and loads that dump again — so analytics go back to the backup's point in time,
+in place or on a clone. Replay blobs live in `/app/data/objectstorage` and are backed up as files.
 
 **One node, one process tree.** ClickHouse runs a single replica, Redpanda a single node; an update
 restarts all of it at once. There is no way to scale beyond a bigger app.

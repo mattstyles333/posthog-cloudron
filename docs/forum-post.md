@@ -68,19 +68,20 @@ ClickHouse with the app's configuration. `restoreCommand` only notes which dump 
 loads it on its own boot — drop the database, `RESTORE DATABASE … FROM Disk('backups', …)`, verify,
 with every step in the app log and in `/app/data/.last-restore.log`. A restored or cloned app with an
 empty data directory takes the same path, so a fresh box recovers the analytics data from the backup.
-Two consequences: an **in-place restore keeps the live analytics data** (Cloudron restores the
-database and files; clone the app for a point-in-time copy of everything), and restores are visible —
-if a restore fails, the marker stays and the boot stops instead of starting over an empty store.
+**A restore therefore rolls the analytics back to the backup's point in time**, exactly like the
+Postgres data: ClickHouse's `posthog` database is dropped and loaded from the dump, whether the app was
+restored in place, cloned or started on a fresh box. Restores are also visible: if one fails, the
+marker stays and the boot stops instead of starting on an empty database.
 
 ### Known limitations
 
 - No Cloudron SSO: PostHog's OIDC/SAML is an enterprise feature. The first account to sign up at the
   app URL becomes the owner, and a self-hosted instance cannot create a second organisation.
-- With the sendmail addon wired up, **sign-up emails a verification link**; without working mail,
-  there is no way to verify the first account through the UI.
+- With the sendmail addon wired up, **sign-up emails a verification link** before login works. If mail
+  is not set up on the box, `POSTINSTALL.md` gives a one-line Web Terminal command that marks the first
+  account verified.
 - One node: single ClickHouse replica, single Redpanda broker, no scaling story beyond a bigger app.
 - Restarts re-run init (~7 minutes); plan updates for a quiet moment.
-- The in-place restore caveat above.
 
 ### Feedback
 

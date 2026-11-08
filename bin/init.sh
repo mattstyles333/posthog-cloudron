@@ -163,6 +163,45 @@ for _ in $(seq 1 60); do
 done
 log "object storage ready"
 
+# --- queued ClickHouse restore ---------------------------------------------------------------
+# bin/restore.sh (Cloudron's restoreCommand) only writes RESTORE_PENDING; the restore itself happens
+# here, on the app's own boot, where ClickHouse runs with its full configuration (Keeper, clusters,
+# the backups disk). This is also the path a brand-new app or a clone takes: empty persistentDir, the
+# marker present, a fresh server, and the dump loaded before anything else touches the database.
+DUMP_DIR=/app/data/clickhouse-backup
+RESTORE_MARKER="${DUMP_DIR}/RESTORE_PENDING"
+RESTORE_LOG=/app/data/.last-restore.log
+
+restore_log() {
+    printf '%s  %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >> "${RESTORE_LOG}"
+    log "restore: $*"
+}
+
+if [[ -f "${RESTORE_MARKER}" ]]; then
+    dump=$(tr -d '[:space:]' < "${RESTORE_MARKER}")
+    if [[ -z "${dump}" || ! -f "${DUMP_DIR}/${dump}" ]]; then
+        restore_log "FAILED: RESTORE_PENDING names '${dump}', which is not in ${DUMP_DIR}"
+        exit 1
+    fi
+    restore_log "starting: ${dump}"
+    if ! /usr/bin/clickhouse client --host 127.0.0.1 --query "DROP DATABASE IF EXISTS posthog SYNC" ; then
+        restore_log "FAILED: could not drop the existing posthog database; marker kept"
+        exit 1
+    fi
+    restore_log "dropped the existing posthog database (if any)"
+    if ! out=$(/usr/bin/clickhouse client --host 127.0.0.1 --query "RESTORE DATABASE posthog FROM Disk('backups', '${dump}')" 2>&1); then
+        restore_log "FAILED: RESTORE reported: $(echo "${out}" | tail -3 | tr '\n' ' ')"
+        exit 1
+    fi
+    tables=$(/usr/bin/clickhouse client --host 127.0.0.1 --query "SELECT count() FROM system.tables WHERE database='posthog'" 2>/dev/null || echo 0)
+    if [[ "${tables}" -lt 1 ]]; then
+        restore_log "FAILED: restored database has no tables; marker kept"
+        exit 1
+    fi
+    restore_log "done: ${dump} restored, ${tables} tables"
+    rm -f "${RESTORE_MARKER}"
+fi
+
 # The ClickHouse database itself: PostHog creates it with DDL ON CLUSTER, which is asynchronous, and
 # then immediately connects to it (migrate_clickhouse.py). Creating it up front removes that race —
 # without this the first run fails with "Database posthog does not exist".

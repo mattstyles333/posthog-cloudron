@@ -61,9 +61,16 @@ reported for other ClickHouse packages too).
 
 This package therefore keeps ClickHouse's data directory outside the backed-up folder (a manifest
 `persistentDirs` entry) and writes a **logical `BACKUP DATABASE` dump** into the backup at backup time
-via `backupCommand`; `restoreCommand` loads that dump back on restore. Same approach as the Langfuse
-community package. Consequence: an **in-place restore keeps the live analytics data**; clone the app
-if you want a point-in-time copy of everything.
+via `backupCommand` — the same approach as the Langfuse community package.
+
+The restore is deliberately not done in Cloudron's restore container: that container has no running
+ClickHouse with the app's configuration. `restoreCommand` only notes which dump to load, and the app
+loads it on its own boot — drop the database, `RESTORE DATABASE … FROM Disk('backups', …)`, verify,
+with every step in the app log and in `/app/data/.last-restore.log`. A restored or cloned app with an
+empty data directory takes the same path, so a fresh box recovers the analytics data from the backup.
+Two consequences: an **in-place restore keeps the live analytics data** (Cloudron restores the
+database and files; clone the app for a point-in-time copy of everything), and restores are visible —
+if a restore fails, the marker stays and the boot stops instead of starting over an empty store.
 
 ### Known limitations
 

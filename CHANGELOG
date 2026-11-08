@@ -1,3 +1,8 @@
+[0.1.6]
+* Restore redesigned: restoreCommand only queues the newest dump (RESTORE_PENDING), and init applies
+  it on the app's own boot with the real ClickHouse server, logging to the app log and
+  /app/data/.last-restore.log. Covers an empty persistentDir (restored or cloned app) too.
+
 [0.1.5]
 * Fix: the restore emptiness check still saw ClickHouse's empty store/ directory and skipped the dump.
   It now looks only at the posthog database's metadata.

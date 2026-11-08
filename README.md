@@ -132,9 +132,18 @@ outside the rsync path, and a logical dump is written into the backup instead.
   file backup.
 - Kafka's data (`/var/lib/posthog/redpanda`) is a `persistentDirs` entry and is **not** backed up:
   it only ever holds un-consumed events.
-- `restoreCommand` (`bin/restore.sh`) restores the newest dump **only into an empty ClickHouse
-  store**, through a temporary `clickhouse-server` (never `clickhouse local`, which produces a
-  store the server then refuses: Code 48).
+- `restoreCommand` (`bin/restore.sh`) **does not restore anything itself**. Cloudron runs it in a
+  bare container before the app starts, where ClickHouse is not running with the app's configuration
+  (Keeper, clusters, the `backups` disk). It only queues work: it writes
+  `/app/data/clickhouse-backup/RESTORE_PENDING` naming the dump to load.
+- The restore then happens in `bin/init.sh`, on the app's own boot, with the real server: drop the
+  `posthog` database if it exists, `RESTORE DATABASE posthog FROM Disk('backups', '<dump>')`, check
+  that the database has tables, remove the marker — every step logged to the app log and to
+  `/app/data/.last-restore.log`. On failure the marker is kept and the boot stops, so the services
+  never start over an empty store.
+- The same marker covers the real disaster case: a restored or cloned app with an **empty
+  persistentDir** starts a fresh ClickHouse, finds the marker, and loads the dump before the
+  migrations run.
 
 All three manifest fields this relies on are real on 10.x, and Cloudron documents exactly the
 semantics used here (https://docs.cloudron.io/packaging/manifest/):

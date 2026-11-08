@@ -99,6 +99,16 @@ export SESSION_RECORDING_API_REDIS_PORT='${CLOUDRON_REDIS_PORT:-6379}'
 # Everything below is inside this container (or, for Redis/Postgres/mail, a Cloudron addon).
 export KAFKA_HOSTS='127.0.0.1:9092'
 export KAFKA_INGESTION_PRODUCER_METADATA_BROKER_LIST='127.0.0.1:9092'
+# The node services build their librdkafka config from prefixed env (common/kafka/config.js:
+# "KAFKA_<TARGET>_" + the rdkafka key, upper-cased with dots as underscores). Their built-in default
+# is `kafka:9092` — the compose service name — so every target the shipped services use has to be
+# spelled out here.
+export KAFKA_PRODUCER_METADATA_BROKER_LIST='127.0.0.1:9092'
+export KAFKA_CONSUMER_METADATA_BROKER_LIST='127.0.0.1:9092'
+export KAFKA_CDP_PRODUCER_METADATA_BROKER_LIST='127.0.0.1:9092'
+export KAFKA_CDP_CONSUMER_METADATA_BROKER_LIST='127.0.0.1:9092'
+export KAFKA_REPLAY_PRODUCER_METADATA_BROKER_LIST='127.0.0.1:9092'
+export KAFKA_REPLAY_CONSUMER_METADATA_BROKER_LIST='127.0.0.1:9092'
 
 export CLICKHOUSE_HOST='127.0.0.1'
 export CLICKHOUSE_DATABASE='posthog'

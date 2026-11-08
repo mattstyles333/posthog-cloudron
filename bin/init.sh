@@ -196,7 +196,7 @@ log "persons fix-up index"
 python3 "${APP_DIR}/bin/apply-sql.py" --file "${APP_DIR}/conf/fixups.sql"
 
 log "cyclotron migrations"
-python3 "${APP_DIR}/bin/apply-sql.py" --migrations "${APP_DIR}/conf/cyclotron" _s4l_sql_migrations \
+python3 "${APP_DIR}/bin/apply-sql.py" --migrations "${APP_DIR}/conf/cyclotron" _cloudron_sql_migrations \
     --search-path cyclotron
 
 # --- 5. Hog function templates ---------------------------------------------------------------------

@@ -24,8 +24,9 @@ image with supervisord in front. That has three consequences worth knowing:
    time so the Node services' HTTP port can be set per process (the build fails if that line ever
    changes upstream).
 2. **Memory.** Everything shares one 12 GiB limit, so each component is capped individually:
-   ClickHouse at 2 GiB, Redpanda at 1 GiB, the Node services at 384 MB of heap, granian at two
-   workers, Celery at two. Measured idle after ingest: see *Checks* below.
+   ClickHouse at 8 GiB of tracked memory (it idles near 1.1 GiB) with its thread pools and caches
+   sized for a small app, Redpanda at 1 GiB on one core, the Node services at 384 MB of heap, granian
+   at two workers and Celery at two. Measured idle after ingest: see *Checks* below.
 3. **Backups.** See [Backups](#backups-and-restores).
 
 ## What runs

@@ -20,6 +20,10 @@ import sys
 OLD = "'metadata.broker.list': 'kafka:9092'"
 NEW = "'metadata.broker.list': process.env.KAFKA_HOSTS || 'kafka:9092'"
 
+# The zod schema the ingestion outputs validate their producer config against.
+OLD_ZOD = "z.string().default('kafka:9092')"
+NEW_ZOD = "z.string().default(process.env.KAFKA_HOSTS || 'kafka:9092')"
+
 # The config object's own default, read by the producers at module load (before the env override in
 # common/config/config.js runs for some paths).
 OLD_HOSTS = "KAFKA_HOSTS: 'kafka:9092'"
@@ -27,6 +31,7 @@ NEW_HOSTS = "KAFKA_HOSTS: process.env.KAFKA_HOSTS || 'kafka:9092'"
 
 EXPECTED = {
     "dist/common/config.js",
+    "dist/common/outputs/kafka-producer-config.js",
     "dist/common/kafka/producer.js",
     "dist/common/kafka/consumer/consumer-v1.js",
     "dist/common/kafka/consumer/consumer-v2.js",
@@ -49,6 +54,13 @@ def main() -> None:
         sys.exit("KAFKA_HOSTS default moved; re-check the broker patch")
     config_js.write_text(text.replace(OLD_HOSTS, NEW_HOSTS))
     patched.add("dist/common/config.js")
+
+    zod_js = root / "dist/common/outputs/kafka-producer-config.js"
+    text = zod_js.read_text()
+    if OLD_ZOD not in text:
+        sys.exit("kafka-producer-config default moved; re-check the broker patch")
+    zod_js.write_text(text.replace(OLD_ZOD, NEW_ZOD))
+    patched.add("dist/common/outputs/kafka-producer-config.js")
 
     if patched != EXPECTED:
         sys.exit(f"kafka broker defaults moved: patched {sorted(patched)}, expected {sorted(EXPECTED)}")

@@ -173,8 +173,23 @@ Everything it creates is removed afterwards; the image is kept.
 
 ## Checks (0.1.0)
 
-Filled in from the run recorded in the commit that introduced this version — see `git log` and the
-smoke output in it.
+`scripts/smoke.sh posthog-cloudron:smoke` on a fresh set of volumes, on the machine the package was
+developed on (96 cores, 62 GiB RAM, ClickHouse and Redpanda in 1-core/1 GiB configurations):
+
+| | |
+|---|---|
+| health check during the first migration | **200 after 5 s** (the app itself answered 502 until 1695 s) |
+| first boot: migrations finished, app serving | **1695 s** (28 min) — Postgres, persons, ClickHouse and async migrations on an empty database |
+| sign-up of the first user (`POST /api/signup`) | **201** |
+| event posted to `/e/`, one row in ClickHouse | **1 row** (within the 2-minute poll) |
+| `POST /flags/?v=2` for the project key | **200** |
+| idle memory after ingest (cgroup `memory.current`) | **7.96 GiB** of the 12 GiB limit (ClickHouse itself ≈1.1 GiB) |
+| restart on the same volumes: health, then app serving | **5 s**, then **415 s** (the one-shot init re-runs; its migrations are no-ops) |
+| user and event after the restart | still there (login **200**, **1 row**) |
+| image | 12.1 GB |
+
+Nothing in the run needed a retry. The image size is not a goal: it carries PostHog's 8.15 GB app
+image, the Node plugin server with its pnpm store, ClickHouse, Redpanda, SeaweedFS and Caddy.
 
 ## Limits worth knowing
 

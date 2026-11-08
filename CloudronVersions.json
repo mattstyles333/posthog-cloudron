@@ -125,6 +125,69 @@
             "creationDate": "Sun, 08 Nov 2026 08:57:28 GMT",
             "ts": "Sun, 08 Nov 2026 08:57:28 GMT",
             "publishState": "published"
+        },
+        "0.1.2": {
+            "manifest": {
+                "id": "io.posthog.cloudronapp",
+                "title": "PostHog",
+                "tagline": "Product analytics, session replay and feature flags in one app",
+                "description": "PostHog, packaged as a single Cloudron app: product analytics, web analytics, session replay,\nfeature flags, surveys, heatmaps, error tracking and data transformations, on one container.\n\n**What this package runs** (all inside the app container):\n\n- PostHog web (Django, granian) and the Celery worker with its scheduler\n- the Node plugin-server services: the CDP API that serves Hog function templates, event\n  ingestion, session-replay blob ingestion, and the recording API\n- the Rust fast path: `capture`, `replay-capture`, `feature-flags`, `property-defs-rs`,\n  `personhog-replica` and `personhog-router`\n- ClickHouse (with its built-in Keeper instead of ZooKeeper), Redpanda (Kafka), SeaweedFS\n  (object storage) and Caddy as the single internal reverse proxy\n\nPostgreSQL, Redis and mail come from the Cloudron addons. Everything is pinned to PostHog commit\n`233686435f9b` and by image digest.\n\n**Not included in 0.1.0** (upstream runs these as extra containers): Temporal and Elasticsearch\n(workflows such as data warehouse syncs and batch exports), `livestream` (the live event feed),\n`browserless` (heatmap screenshots), `cymbal` (error-tracking symbolication), the logs/traces/AI\ncapture services, CDP destination delivery (the cyclotron workers), and Apache Superset/embedded\ndashboards.\n\n**Signing in:** there is no Cloudron SSO. Self-hosted PostHog's OIDC support is a paid feature, so\nthe first account you create at the app's URL is the instance owner. A self-hosted instance cannot\ncreate a second organisation, so use that account for everything.\n",
+                "changelog": "* Fix: ClickHouse backups. Version 26 refuses the Disk backup engine unless the disk is allowed\n  explicitly, so every backup failed with \"Code: 318. The 'backups.allowed_disk' configuration\n  parameter is not set\" and Cloudron's pre-update backup aborted the update.\n",
+                "postInstallMessage": "## PostHog is installed\n\n**Create the owner account.** Open the app and sign up. The first account becomes the instance\nowner; self-hosted PostHog cannot create a second organisation, so keep this one.\n\nCloudron sign-in is not wired up: PostHog's OIDC/SAML support is an enterprise feature. Use the\nemail and password you set here, and keep it somewhere safe — there is no password reset by email\nunless the mail addon is configured.\n\n### Sending events\n\n1. In **Project settings → Web snippet**, copy the project API key.\n2. Point your site at this app:\n\n   ```js\n   posthog.init('<project-api-key>', {\n     api_host: 'https://<this-app>',\n     ui_host: 'https://<this-app>',\n     person_profiles: 'identified_only'\n   })\n   ```\n\n3. Events appear under **Activity → Live events** within a few seconds.\n\n### First things to know\n\n- **Analytics data lives in ClickHouse**, outside the ordinary `/app/data` backup folder, so its\n  background merges cannot abort your whole server's backup run (a known Cloudron issue for any\n  ClickHouse app). A dump of it is written into the backup at backup time; see the project README.\n- **The first boot takes a while.** Migrations run before the services start; the app answers its\n  health check immediately, so Cloudron will not time out. Expect tens of minutes on a fresh\n  install, and check the app log for `[init] ready: services may start`.\n- **Feature flags and session replay** work out of the box. **Data warehouse syncs, batch exports\n  and CDP destination delivery are not included** in this version.\n",
+                "version": "0.1.2",
+                "upstreamVersion": "233686435f9b",
+                "manifestVersion": 2,
+                "minBoxVersion": "10.0.0",
+                "healthCheckPath": "/_cloudron_health",
+                "httpPort": 8000,
+                "memoryLimit": 12884901888,
+                "persistentDirs": [
+                    "/var/lib/posthog/clickhouse",
+                    "/var/lib/posthog/redpanda"
+                ],
+                "backupCommand": "/app/code/bin/backup.sh",
+                "restoreCommand": "/app/code/bin/restore.sh",
+                "addons": {
+                    "localstorage": {},
+                    "postgresql": {},
+                    "redis": {
+                        "noPassword": true,
+                        "maxmemoryPolicy": "allkeys-lru"
+                    },
+                    "sendmail": {
+                        "supportsDisplayName": true
+                    }
+                },
+                "checklist": {
+                    "create-admin": {
+                        "message": "Open the app and sign up: the first account becomes the instance owner. Self-hosted PostHog cannot create a second organisation, so use this account for everything."
+                    },
+                    "storefront-snippet": {
+                        "message": "In **Project settings → Web snippet**, copy the project API key into your site. Send browser events to this app's URL and set `ui_host` to the same URL."
+                    }
+                },
+                "icon": "file://logo.png",
+                "iconUrl": "https://raw.githubusercontent.com/mattstyles333/posthog-cloudron/main/logo.png",
+                "website": "https://posthog.com",
+                "documentationUrl": "https://posthog.com/docs/self-host",
+                "packagerName": "mattstyles333",
+                "packagerUrl": "https://github.com/mattstyles333/posthog-cloudron",
+                "tags": [
+                    "analytics",
+                    "product",
+                    "session-replay",
+                    "feature-flags",
+                    "posthog"
+                ],
+                "mediaLinks": [
+                    "https://raw.githubusercontent.com/mattstyles333/posthog-cloudron/main/logo.png"
+                ],
+                "packageUrl": "https://github.com/mattstyles333/posthog-cloudron",
+                "dockerImage": "ghcr.io/mattstyles333/posthog-cloudron:0.1.2"
+            },
+            "creationDate": "Sun, 08 Nov 2026 09:46:51 GMT",
+            "ts": "Sun, 08 Nov 2026 09:46:51 GMT",
+            "publishState": "published"
         }
     }
 }

@@ -13,6 +13,29 @@ MIT Expat except for its `ee/` directory).
 - Every image is pinned **by digest**, never by `:master`; the digests are in the `Dockerfile`
   arguments and come from that stack's `compose.pins.yml`.
 
+## Install on Cloudron
+
+This is a community package, so it is not in the App Store. Add its version catalogue to the
+dashboard once and Cloudron installs and updates it like any other app:
+
+1. **App Store → Add custom app → Community app**, paste
+   `https://raw.githubusercontent.com/mattstyles333/posthog-cloudron/main/CloudronVersions.json`,
+   install, and assign the location (e.g. `posthog-cloudron.example.com`).
+2. Or from the CLI:
+
+   ```sh
+   cloudron login my.example.com
+   cloudron install \
+     --versions-url https://raw.githubusercontent.com/mattstyles333/posthog-cloudron/main/CloudronVersions.json \
+     --location posthog-cloudron
+   ```
+
+The manifest asks for 12 GiB of memory; if your box has more headroom, raise it in the app's
+settings after install (`cloudron install --memory-limit 16G` also works). First boot takes about
+half an hour (see [Known limitations](#known-limitations)); the health check answers immediately.
+
+After it starts, open the app and sign up: the first account becomes the owner of the instance.
+
 ## Why one container
 
 Cloudron runs one container per app, so PostHog's 30-plus-container hobby compose becomes one

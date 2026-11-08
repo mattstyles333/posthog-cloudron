@@ -1,3 +1,7 @@
+[0.1.1]
+* Fix: declare the localstorage addon. Cloudron runs apps on a read-only filesystem and only this
+  addon provides the writable /app/data the package needs; without it the app could not start.
+
 [0.1.0]
 * First build: one container running web, worker, the node plugin-server services, capture,
   replay-capture, feature-flags, property-defs-rs, personhog-replica/router, ClickHouse (with

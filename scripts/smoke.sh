@@ -264,15 +264,20 @@ COUNT2=$(docker exec "${NAME}" /usr/bin/clickhouse client --query \
 (( COUNT2 > 0 )) || fail "the event is gone after the restart"
 echo "    the event is still there (${COUNT2} row(s))"
 
-# The one-shot init runs again on this boot (migrations are a no-op); wait for it to finish.
+# The one-shot init runs again on this boot (its migrations are no-ops). supervisord knows whether it
+# finished: EXITED means it ran to completion, FATAL/BACKOFF means it failed.
+init_state=""
 for _ in $(seq 1 120); do
-    docker logs "${NAME}" 2>&1 | grep -q "migrations finished" && break
+    init_state=$(docker exec "${NAME}" supervisorctl -c /app/code/supervisord.conf status init 2>/dev/null | awk '{print $2}' || true)
+    if [[ "${init_state}" == "EXITED" ]]; then
+        break
+    fi
     sleep 5
 done
-if docker logs "${NAME}" 2>&1 | grep -q "migrations finished"; then
-    echo "    migrations ran again on boot and finished; the app was serving after ${RESTART_SECS}s"
+if [[ "${init_state}" == "EXITED" ]]; then
+    echo "    the one-shot init ran again on boot and finished; the app was serving after ${RESTART_SECS}s"
 else
-    fail "the init step did not finish after the restart"
+    fail "the one-shot init did not finish after the restart (state: ${init_state:-unknown})"
 fi
 
 log "PASS"

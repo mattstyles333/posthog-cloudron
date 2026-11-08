@@ -114,6 +114,10 @@ COPY conf/ /app/code/conf/
 RUN cp -a /code/posthog/user_scripts /app/code/user_scripts && \
     python3 /app/code/conf/patch-run-udf.py /app/code/user_scripts
 
+# The node services' librdkafka default is the compose service name `kafka:9092`; here the broker
+# is on loopback (conf/patch-kafka-brokers.py explains why the env cannot override it).
+RUN python3 /app/code/conf/patch-kafka-brokers.py /code/nodejs
+
 RUN chmod +x /app/code/start.sh /app/code/bin/*.sh /app/code/bin/*.py && \
     cp /app/code/conf/clickhouse/config.d/*.xml /etc/clickhouse-server/config.d/ && \
     cp /app/code/conf/clickhouse/user_defined_function.xml /etc/clickhouse-server/user_defined_function.xml && \

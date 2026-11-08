@@ -42,7 +42,23 @@ PG_VERSION=${PG_VERSION:-14}
 WORKDIR=$(mktemp -d)
 
 log() { printf '\n==> %s\n' "$*"; }
-fail() { printf '\nFAILED: %s\n' "$*" >&2; dump_logs; exit 1; }
+fail() {
+    printf '\nFAILED: %s\n' "$*" >&2
+    # Keep everything and print what a diagnosis needs, so a failure does not cost another cold run.
+    KEEP=1
+    if docker inspect "${NAME}" >/dev/null 2>&1; then
+        echo "--- supervisorctl status ---"
+        docker exec "${NAME}" supervisorctl -c /app/code/supervisord.conf status 2>&1 | sed 's/^/  /'
+        echo "--- ingestion-general (last 40 lines) ---"
+        docker logs "${NAME}" 2>&1 | grep -E "\[INGESTION-V2-COMBINED\]" | tail -40 | cut -c1-300 | sed 's/^/  /'
+        echo "--- ClickHouse events count ---"
+        docker exec "${NAME}" /usr/bin/clickhouse client --query "SELECT count() FROM posthog.events" 2>&1 | tail -2 | sed 's/^/  /'
+        echo "--- container memory ---"
+        docker stats --no-stream --format '  {{.MemUsage}}' "${NAME}" 2>/dev/null || true
+    fi
+    dump_logs
+    exit 1
+}
 dump_logs() {
     echo "--- container log (last 120 lines) ---"
     docker logs "${NAME}" 2>&1 | tail -120 || true
@@ -194,7 +210,9 @@ echo "    ingest: ${INGEST}"
 
 log "   waiting for the event in ClickHouse (up to 120s)"
 COUNT=0
-for _ in $(seq 1 60); do
+# A cold stack needs a couple of minutes before the first row shows up (ingestion warm-up + the
+# ClickHouse insert), so give it five.
+for _ in $(seq 1 150); do
     for table in posthog.events posthog.sharded_events; do
         COUNT=$(docker exec "${NAME}" /usr/bin/clickhouse client --query \
             "SELECT count() FROM ${table} WHERE event = '${EVENT}'" 2>/dev/null || echo 0)

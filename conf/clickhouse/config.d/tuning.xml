@@ -1,0 +1,23 @@
+<clickhouse>
+    <!-- ClickHouse sizes its thread pools and caches from the host (96 cores, 62 GiB on the test
+         machine), which cost ~840 threads and an 8 GiB RSS with almost no data. These are the sizes
+         the standalone stack effectively gets from its 4 GiB cgroup. max_thread_pool_size and the io
+         pool are deliberately left at their defaults: setting them broke the embedded Keeper
+         (RaftInstance: Election timeout on a fresh data directory). The merge pool is left at its default
+         size: merge_tree's number_of_free_entries_in_pool_to_execute_mutation requires at least 20. -->
+    <background_move_pool_size>2</background_move_pool_size>
+    <background_fetches_pool_size>2</background_fetches_pool_size>
+    <background_common_pool_size>4</background_common_pool_size>
+    <background_buffer_flush_schedule_pool_size>2</background_buffer_flush_schedule_pool_size>
+    <background_schedule_pool_size>16</background_schedule_pool_size>
+    <background_message_broker_schedule_pool_size>4</background_message_broker_schedule_pool_size>
+    <background_distributed_schedule_pool_size>2</background_distributed_schedule_pool_size>
+
+    <mark_cache_size>268435456</mark_cache_size>
+    <uncompressed_cache_size>0</uncompressed_cache_size>
+    <index_mark_cache_size>33554432</index_mark_cache_size>
+    <index_uncompressed_cache_size>0</index_uncompressed_cache_size>
+    <primary_index_cache_size>67108864</primary_index_cache_size>
+    <query_condition_cache_size>33554432</query_condition_cache_size>
+    <compiled_expression_cache_size>33554432</compiled_expression_cache_size>
+</clickhouse>

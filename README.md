@@ -192,6 +192,31 @@ developed on (96 cores, 62 GiB RAM, ClickHouse and Redpanda in 1-core/1 GiB conf
 Nothing in the run needed a retry. The image size is not a goal: it carries PostHog's 8.15 GB app
 image, the Node plugin server with its pnpm store, ClickHouse, Redpanda, SeaweedFS and Caddy.
 
+## Known limitations
+
+**Restarts and updates re-run init.** Every boot runs the one-shot init again: it waits for the
+services, re-creates topics and the S3 bucket, then re-runs PostHog's migrations, which are no-ops on
+an existing install (measured: the app answers its health check 5 s after a restart and serves again
+after **~7 minutes**). Cloudron keeps the app "healthy" throughout because the health check is a
+static endpoint on the proxy, but nothing is useful until init finishes. The same step runs after an
+update, so plan updates for a quiet moment.
+
+**The first boot takes ~28 minutes.** On an empty database, Postgres, persons, ClickHouse and async
+migrations took 1695 s in the smoke run; the app's health check answers 200 from the first seconds.
+
+**Backups.** ClickHouse's data directory is a `persistentDirs` entry, outside `/app/data`, because its
+merge churn aborts Cloudron's rsync backup for every app after it. `backupCommand` writes a
+`BACKUP DATABASE` dump into `/app/data/clickhouse-backup/` at backup time and `restoreCommand` restores
+it only into an empty store — so an in-place restore keeps the live analytics data; clone the app for a
+point-in-time copy. Replay blobs live in `/app/data/objectstorage` and are backed up as files.
+
+**One node, one process tree.** ClickHouse runs a single replica, Redpanda a single node; an update
+restarts all of it at once. There is no way to scale beyond a bigger app.
+
+**Not included** (see above): Temporal/Elasticsearch (data warehouse syncs, batch exports),
+`livestream`, `browserless` (heatmap screenshots), `cymbal` (error-tracking symbolication), the
+logs/traces/AI capture services, CDP destination delivery.
+
 ## Limits worth knowing
 
 - **No Cloudron SSO.** PostHog's OIDC/SAML is an enterprise feature; the first sign-up at the app

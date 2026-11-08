@@ -246,8 +246,13 @@ COUNT2=$(docker exec "${NAME}" /usr/bin/clickhouse client --query \
 (( COUNT2 > 0 )) || fail "the event is gone after the restart"
 echo "    the event is still there (${COUNT2} row(s))"
 
+# The one-shot init runs again on this boot (migrations are a no-op); wait for it to finish.
+for _ in $(seq 1 120); do
+    docker logs "${NAME}" 2>&1 | grep -q "migrations finished" && break
+    sleep 5
+done
 if docker logs "${NAME}" 2>&1 | grep -q "migrations finished"; then
-    echo "    migrations ran again on boot and finished; the sentinel was released after ${RESTART_SECS}s"
+    echo "    migrations ran again on boot and finished; the app was serving after ${RESTART_SECS}s"
 else
     fail "the init step did not finish after the restart"
 fi

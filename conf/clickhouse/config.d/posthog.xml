@@ -32,35 +32,13 @@
         </local_directory>
     </user_directories>
 
-    <!-- Sized for a 12 GiB app on any host, not for the host it happens to run on. ClickHouse sizes
-         its thread pools and caches from the machine's core count and RAM (96 cores on the test
-         host): that gave 839 threads and a 7.4 GiB RSS with almost no data, which then failed its own
-         queries with MEMORY_LIMIT_EXCEEDED. These are the numbers the live standalone stack gets from
-         its 4 GiB cgroup. -->
-    <max_server_memory_usage>4294967296</max_server_memory_usage>
-    <max_server_memory_usage_to_ram_ratio>1.0</max_server_memory_usage_to_ram_ratio>
-    <max_thread_pool_size>64</max_thread_pool_size>
-    <max_io_thread_pool_size>16</max_io_thread_pool_size>
-    <max_concurrent_queries>16</max_concurrent_queries>
-    <background_pool_size>4</background_pool_size>
-    <background_merges_mutations_concurrency_ratio>2</background_merges_mutations_concurrency_ratio>
-    <background_move_pool_size>2</background_move_pool_size>
-    <background_fetches_pool_size>2</background_fetches_pool_size>
-    <background_common_pool_size>4</background_common_pool_size>
-    <background_buffer_flush_schedule_pool_size>2</background_buffer_flush_schedule_pool_size>
-    <background_schedule_pool_size>16</background_schedule_pool_size>
-    <background_message_broker_schedule_pool_size>4</background_message_broker_schedule_pool_size>
-    <background_distributed_schedule_pool_size>2</background_distributed_schedule_pool_size>
+    <!-- It shares a 12 GiB container with the whole stack. 4 GiB is what the standalone hobby
+         stack gives ClickHouse; at 2 GiB its own migrations died with MEMORY_LIMIT_EXCEEDED. -->
+    <max_server_memory_usage>8589934592</max_server_memory_usage>
     <mark_cache_size>268435456</mark_cache_size>
     <uncompressed_cache_size>0</uncompressed_cache_size>
-    <index_mark_cache_size>33554432</index_mark_cache_size>
-    <index_uncompressed_cache_size>0</index_uncompressed_cache_size>
-    <mmap_cache_size>512</mmap_cache_size>
-    <primary_index_cache_size>67108864</primary_index_cache_size>
-    <query_condition_cache_size>33554432</query_condition_cache_size>
-    <compiled_expression_cache_size>33554432</compiled_expression_cache_size>
-    <compiled_expression_cache_elements_size>1000</compiled_expression_cache_elements_size>
-    <total_memory_profiler_step>0</total_memory_profiler_step>
+    <max_concurrent_queries>16</max_concurrent_queries>
+    <max_server_memory_usage_to_ram_ratio>0.7</max_server_memory_usage_to_ram_ratio>
 
     <!-- Cluster definitions live in clusters.xml (upstream's docker/clickhouse/config.d/default.xml,
          one node). -->

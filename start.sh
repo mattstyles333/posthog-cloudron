@@ -150,10 +150,6 @@ export GRANIAN_WORKERS=2
 export GRANIAN_HOST=127.0.0.1
 export GRANIAN_PORT=8010
 export NODE_OPTIONS='--max-old-space-size=384'
-# Size thread pools for a small app, not for the host's 96 cores.
-export UV_THREADPOOL_SIZE=4
-export TOKIO_WORKER_THREADS=2
-export RAYON_NUM_THREADS=2
 EOF
 chmod 600 "${RUN_DIR}/env.sh"
 

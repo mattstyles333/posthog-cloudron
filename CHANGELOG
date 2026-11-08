@@ -1,3 +1,7 @@
+[0.1.4]
+* Fix: restoreCommand treated ClickHouse's global metadata directory as "the database already exists",
+  so a restore never applied the dump. It now tests for the posthog database itself.
+
 [0.1.3]
 * Fix: backupCommand and restoreCommand run under /bin/sh, not bash, so the restore step silently did
   nothing with bash syntax. Both now re-exec themselves under bash.

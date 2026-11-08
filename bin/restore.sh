@@ -30,8 +30,11 @@ if [[ -z "${LATEST}" ]]; then
     exit 0
 fi
 
-if [[ -d "${STORE}/store" || -d "${STORE}/metadata" ]]; then
-    log "ClickHouse already has data; leaving it alone (restore only fills an empty store)"
+# "Has data" means the posthog database itself exists: the global metadata directory is always
+# there, so testing for it made every restore a no-op.
+DB=${CLICKHOUSE_DATABASE:-posthog}
+if [[ -d "${STORE}/metadata/${DB}" || -d "${STORE}/store" ]]; then
+    log "ClickHouse already holds the ${DB} database; leaving it alone (restore only fills an empty store)"
     exit 0
 fi
 

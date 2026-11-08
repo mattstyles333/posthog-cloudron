@@ -1,3 +1,9 @@
+[0.1.3]
+* Fix: backupCommand and restoreCommand run under /bin/sh, not bash, so the restore step silently did
+  nothing with bash syntax. Both now re-exec themselves under bash.
+* POSTINSTALL: sign-up needs the email-verification link (or a Web Terminal command when mail is off)
+* docs/forum-post.md: the package's forum announcement
+
 [0.1.2]
 * Fix: ClickHouse backups. Version 26 refuses the Disk backup engine unless the disk is allowed
   explicitly, so every backup failed with "Code: 318. The 'backups.allowed_disk' configuration

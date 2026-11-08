@@ -4,8 +4,17 @@
 owner; self-hosted PostHog cannot create a second organisation, so keep this one.
 
 Cloudron sign-in is not wired up: PostHog's OIDC/SAML support is an enterprise feature. Use the
-email and password you set here, and keep it somewhere safe — there is no password reset by email
-unless the mail addon is configured.
+email and password you set here, and keep it somewhere safe.
+
+**The sign-up sends a verification email.** With the sendmail addon configured, PostHog will not let
+you log in until you open the link in that email (`verify_email_pending`). If mail is not set up on
+this Cloudron, you can verify the first account from the app's Web Terminal:
+
+```
+cd /code && set -a && . /run/posthog/env.sh && set +a
+python manage.py shell -c "from posthog.models import User; u = User.objects.get(email='you@example.com'); u.is_email_verified = True; u.save()"
+```
+and then log in normally.
 
 ### Sending events
 

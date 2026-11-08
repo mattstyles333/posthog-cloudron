@@ -13,6 +13,9 @@ MIT Expat except for its `ee/` directory).
 - Every image is pinned **by digest**, never by `:master`; the digests are in the `Dockerfile`
   arguments and come from that stack's `compose.pins.yml`.
 
+A ready-to-paste forum post for the Community Apps category is in
+[`docs/forum-post.md`](docs/forum-post.md).
+
 ## Install on Cloudron
 
 This is a community package, so it is not in the App Store. Add its version catalogue to the

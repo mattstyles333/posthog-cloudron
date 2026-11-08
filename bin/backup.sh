@@ -1,4 +1,7 @@
 #!/bin/bash
+# Cloudron runs backupCommand/restoreCommand as `/bin/sh -c '<script>'`, which ignores the shebang; the
+# bashisms below would fail under dash. Re-exec ourselves under bash when that happens.
+[ -n "${BASH_VERSION:-}" ] || exec /bin/bash "$0" "$@"
 # Cloudron backupCommand.
 #
 # Cloudron runs this in a temporary container of this image that shares the app's network

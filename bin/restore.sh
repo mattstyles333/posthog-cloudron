@@ -33,7 +33,9 @@ fi
 # "Has data" means the posthog database itself exists: the global metadata directory is always
 # there, so testing for it made every restore a no-op.
 DB=${CLICKHOUSE_DATABASE:-posthog}
-if [[ -d "${STORE}/metadata/${DB}" || -d "${STORE}/store" ]]; then
+# Only the database's own metadata decides it: ClickHouse keeps the store/ and metadata/ directories
+# around even after a DROP DATABASE, so testing those made every restore a no-op.
+if [[ -d "${STORE}/metadata/${DB}" ]]; then
     log "ClickHouse already holds the ${DB} database; leaving it alone (restore only fills an empty store)"
     exit 0
 fi

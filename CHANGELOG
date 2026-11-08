@@ -1,3 +1,7 @@
+[0.1.5]
+* Fix: the restore emptiness check still saw ClickHouse's empty store/ directory and skipped the dump.
+  It now looks only at the posthog database's metadata.
+
 [0.1.4]
 * Fix: restoreCommand treated ClickHouse's global metadata directory as "the database already exists",
   so a restore never applied the dump. It now tests for the posthog database itself.

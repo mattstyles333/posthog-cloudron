@@ -1,3 +1,8 @@
+[0.1.2]
+* Fix: ClickHouse backups. Version 26 refuses the Disk backup engine unless the disk is allowed
+  explicitly, so every backup failed with "Code: 318. The 'backups.allowed_disk' configuration
+  parameter is not set" and Cloudron's pre-update backup aborted the update.
+
 [0.1.1]
 * Fix: declare the localstorage addon. Cloudron runs apps on a read-only filesystem and only this
   addon provides the writable /app/data the package needs; without it the app could not start.

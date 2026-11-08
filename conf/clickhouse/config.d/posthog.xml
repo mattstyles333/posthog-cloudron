@@ -86,4 +86,10 @@
             </backups>
         </disks>
     </storage_configuration>
+
+    <!-- ClickHouse 26 refuses a disk backup engine unless the allowed disks are named explicitly
+         ("Code: 318. The 'backups.allowed_disk' configuration parameter is not set"). -->
+    <backups>
+        <allowed_disk>backups</allowed_disk>
+    </backups>
 </clickhouse>

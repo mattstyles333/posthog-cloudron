@@ -20,7 +20,13 @@ import sys
 OLD = "'metadata.broker.list': 'kafka:9092'"
 NEW = "'metadata.broker.list': process.env.KAFKA_HOSTS || 'kafka:9092'"
 
+# The config object's own default, read by the producers at module load (before the env override in
+# common/config/config.js runs for some paths).
+OLD_HOSTS = "KAFKA_HOSTS: 'kafka:9092'"
+NEW_HOSTS = "KAFKA_HOSTS: process.env.KAFKA_HOSTS || 'kafka:9092'"
+
 EXPECTED = {
+    "dist/common/config.js",
     "dist/common/kafka/producer.js",
     "dist/common/kafka/consumer/consumer-v1.js",
     "dist/common/kafka/consumer/consumer-v2.js",
@@ -37,6 +43,13 @@ def main() -> None:
         if OLD in text:
             path.write_text(text.replace(OLD, NEW))
             patched.add(str(path.relative_to(root)))
+    config_js = root / "dist/common/config.js"
+    text = config_js.read_text()
+    if OLD_HOSTS not in text:
+        sys.exit("KAFKA_HOSTS default moved; re-check the broker patch")
+    config_js.write_text(text.replace(OLD_HOSTS, NEW_HOSTS))
+    patched.add("dist/common/config.js")
+
     if patched != EXPECTED:
         sys.exit(f"kafka broker defaults moved: patched {sorted(patched)}, expected {sorted(EXPECTED)}")
     print(f"patched {len(patched)} kafka client defaults")
